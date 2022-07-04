@@ -1,6 +1,6 @@
 import cv2
 
-src="img/2.jpg"
+src="../img/2.jpg"
 
 img=cv2.imread(src)
 # dst =cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)#灰度图

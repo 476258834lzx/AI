@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 #取出HSV色度、饱和度、亮度的特定范围的图像
-img=cv2.imread("img/3.jpg")
+img=cv2.imread("../img/3.jpg")
 hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
 
 lower_blue=np.array([100,200,100])

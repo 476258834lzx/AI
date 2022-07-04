@@ -1,7 +1,7 @@
 import cv2
 
 # cap=cv2.VideoCapture(0)
-cap =cv2.VideoCapture("img/1.MP4")
+cap =cv2.VideoCapture("../img/1.MP4")
 while True:
     ret,frame=cap.read()
     cv2.imshow('frame',frame)
