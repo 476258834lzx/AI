@@ -14,19 +14,19 @@ plt.yticks([])
 
 plt.subplot(2,2,2)#图片形状，图像位置索引
 plt.imshow(laplacian,cmap="gray")
-plt.title("Original")
+plt.title("laplacian")
 plt.xticks([])
 plt.yticks([])
 
 plt.subplot(2,2,3)#图片形状，图像位置索引
 plt.imshow(sobelx,cmap="gray")
-plt.title("Original")
+plt.title("sobelx")
 plt.xticks([])
 plt.yticks([])
 
 plt.subplot(2,2,4)#图片形状，图像位置索引
 plt.imshow(sobely,cmap="gray")
-plt.title("Original")
+plt.title("sobely")
 plt.xticks([])
 plt.yticks([])
 plt.show()
