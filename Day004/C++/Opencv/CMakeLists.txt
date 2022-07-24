@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 project(Opencv)
 set(CMAKE_CXX_STANDARD 14)
-add_executable(Opencv read_video.cpp)
+add_executable(Opencv morphology.cpp)
 
 set(OpenCV_DIR "D:/lib/opencv/build/x64/vc15/lib")#设置opencv编译的路径
 find_package(OpenCV REQUIRED)#查找opencv需要的其他库
