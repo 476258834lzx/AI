@@ -226,8 +226,8 @@ def hsv(img_path,label_path,dst_folder):
 
     cv2.imwrite(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"), img)
     shutil.copy(label_path, aug_label_path)
-    mosaic_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
-    os.rename(mosaic_labelname, mosaic_labelname[:-4] + f"-{state}.txt")
+    hsv_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
+    os.rename(hsv_labelname, hsv_labelname[:-4] + f"-{state}.txt")
     return dst_folder
 
 def translate(img_path,label_path,dst_folder):
@@ -395,8 +395,8 @@ def sharpening(img_path,label_path,dst_folder,if_Gauss=True):
 
     cv2.imwrite(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"), aug_img)
     shutil.copy(label_path, aug_label_path)
-    mosaic_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
-    os.rename(mosaic_labelname, mosaic_labelname[:-4] + f"-{state}.txt")
+    sharpening_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
+    os.rename(sharpening_labelname, sharpening_labelname[:-4] + f"-{state}.txt")
 
     return dst_folder
 
@@ -413,8 +413,8 @@ def hist_equalist(img_path,label_path,dst_folder):
 
     cv2.imwrite(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"), aug_img)
     shutil.copy(label_path, aug_label_path)
-    mosaic_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
-    os.rename(mosaic_labelname, mosaic_labelname[:-4] + f"-{state}.txt")
+    hist_equalist_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
+    os.rename(hist_equalist_labelname, hist_equalist_labelname[:-4] + f"-{state}.txt")
     return dst_folder
 
 def get_contour(img_path,label_path,dst_folder):
@@ -426,9 +426,46 @@ def get_contour(img_path,label_path,dst_folder):
 
     aug_img.save(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"))
     shutil.copy(label_path, aug_label_path)
-    mosaic_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
-    os.rename(mosaic_labelname, mosaic_labelname[:-4] + f"-{state}.txt")
+    get_contour_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
+    os.rename(get_contour_labelname, get_contour_labelname[:-4] + f"-{state}.txt")
 
+    return dst_folder
+
+def fourier_transformation(img_path,label_path,dst_folder,frequency):
+    state = "fourier_transformation"
+    aug_img_path, aug_label_path = check_path(dst_folder, state)
+
+    img = cv2.imread(img_path,0)
+    rows, cols = img.shape
+    crow, ccol = rows // 2, cols // 2
+    #########傅里叶变换
+    f = np.fft.fft2(img)
+    fshift = np.fft.fftshift(f)
+    if frequency:
+        ###########去除低频信号
+        ratio = np.random.uniform(0.05, 0.1)
+        fshift[crow - int(crow*ratio):crow + int(crow*ratio), ccol - int(ccol*ratio):ccol + int(ccol*ratio)] = 0
+
+        ############傅里叶逆变换
+        f_ishift = np.fft.ifftshift(fshift)
+        img_back = np.fft.ifft2(f_ishift)
+        img_back = np.abs(img_back)
+    else:
+        ###########去除高频信号
+        ratio = np.random.uniform(0.2, 0.4)
+        mask = np.zeros((rows, cols), np.uint8)
+        mask[crow - int(crow*ratio):crow + int(crow*ratio), ccol - int(ccol*ratio):ccol + int(ccol*ratio)] = 1
+        fshift = fshift * mask
+
+        ############傅里叶逆变换
+        f_ishift = np.fft.ifftshift(fshift)
+        img_back = np.fft.ifft2(f_ishift)
+        img_back = np.abs(img_back)
+
+    cv2.imwrite(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"), img_back)
+    shutil.copy(label_path, aug_label_path)
+    fourier_transformation_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
+    os.rename(fourier_transformation_labelname, fourier_transformation_labelname[:-4] + f"-{state}.txt")
     return dst_folder
 
 if __name__ == '__main__':
@@ -451,4 +488,5 @@ if __name__ == '__main__':
         # goal_mask_Laplace_fusion(img_path,label_path,material_src,mark,dst_folder,0)
         # sharpening(img_path,label_path,dst_folder,True)#锐化图像增量
         # hist_equalist(img_path,label_path,dst_folder)#直方图均衡增量
-        get_contour(img_path,label_path,dst_folder)#轮廓图增量
+        # get_contour(img_path,label_path,dst_folder)#轮廓图增量
+        fourier_transformation(img_path,label_path,dst_folder,True)#傅立叶滤波

@@ -1,0 +1,28 @@
+import os
+from torch.utils.data import Dataset
+import cv2
+import numpy as np
+
+class MINISTDataset(Dataset):
+    def __init__(self,root,is_train):
+        super(MINISTDataset, self).__init__()
+        self.dataset=[]
+        sub_dir="TRAIN" if is_train else "TEST"
+        for tag in os.listdir(f"{root}/{sub_dir}"):
+            img_dir=f"{root}/{sub_dir}/{tag}"
+            for img_filename in os.listdir(img_dir):
+                img_path=f"{img_dir}/{img_filename}"
+                self.dataset.append((img_path),tag)
+
+    def __len__(self):
+        return len(self.dataset)
+    def __getitem__(self, index):
+        data=self.dataset[index]
+        img_data=cv2.imread(data[0],0)
+        img_data=img_data.reshape(-1)
+        img_data=img_data/255
+
+        tag_one_hot=np.zeros(10)
+        tag_one_hot[int(data[1])]=1
+
+        return np.float32(img_data),np.float32(tag_one_hot)
