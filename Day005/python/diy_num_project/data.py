@@ -1,5 +1,5 @@
 import os
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset,DataLoader
 import cv2
 import numpy as np
 
@@ -12,7 +12,7 @@ class MINISTDataset(Dataset):
             img_dir=f"{root}/{sub_dir}/{tag}"
             for img_filename in os.listdir(img_dir):
                 img_path=f"{img_dir}/{img_filename}"
-                self.dataset.append((img_path),tag)
+                self.dataset.append((img_path,tag))
 
     def __len__(self):
         return len(self.dataset)
@@ -26,3 +26,11 @@ class MINISTDataset(Dataset):
         tag_one_hot[int(data[1])]=1
 
         return np.float32(img_data),np.float32(tag_one_hot)
+
+if __name__ == '__main__':
+    dataset=MINISTDataset("data",True)
+    print(dataset[55555][1])
+    data_loader=DataLoader(dataset,batch_size=10,shuffle=True)
+    for i in data_loader:
+        print(i[0].shape)
+        print(i[1].shape)
