@@ -5,7 +5,6 @@ from net import Model
 from transformers import AdamW,BertTokenizer
 
 DEVICE=torch.device("cuda" if torch.cuda.is_available() else "cpu")
-EPOCH=30000
 
 token=BertTokenizer.from_pretrained("bert-base-chinese")
 
@@ -29,3 +28,18 @@ if __name__ == '__main__':
     #开始测试
     print(DEVICE)
     model=Model().to(DEVICE)
+    model.load_state_dict(torch.load("params/0bert01.pth"))
+    model.eval()
+
+    acc=0
+    num=0
+
+    for i, (input_ids, attention_mask, token_type_ids, labels) in enumerate(test_loader):#i*batchsize<=len(test_loader)
+        input_ids, attention_mask, token_type_ids, labels = input_ids.to(DEVICE), attention_mask.to(
+            DEVICE), token_type_ids.to(DEVICE), labels.to(DEVICE)
+        out = model(input_ids, attention_mask, token_type_ids)
+
+        out = out.argmax(dim=1)
+        acc += (out == labels).sum().item()
+        num+=len(labels)
+    print(acc/num)
