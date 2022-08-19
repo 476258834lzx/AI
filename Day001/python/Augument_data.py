@@ -102,34 +102,34 @@ def flip(img_path,label_path,dst_folder):
     dst_label.close()
     return dst_folder
 
-def letter_box(img):
+def letter_box(img,size=640):
     height,width=img.shape[0:2]
     if height>width:
-        rate=float(640/height)
-        resize_img=cv2.resize(img,(int(width*rate),640),interpolation=cv2.INTER_LANCZOS4)
+        rate=float(size/height)
+        resize_img=cv2.resize(img,(int(width*rate),size),interpolation=cv2.INTER_LANCZOS4)
         top=0
         bottom=0
-        if (640-resize_img.shape[1])%2==0:
-            left=(640-resize_img.shape[1])/2
-            right=(640-resize_img.shape[1])/2
+        if (size-resize_img.shape[1])%2==0:
+            left=(size-resize_img.shape[1])/2
+            right=(size-resize_img.shape[1])/2
         else:
-            left = (640 - resize_img.shape[1]) // 2
-            right = (640 - resize_img.shape[1]) //2+1
+            left = (size - resize_img.shape[1]) // 2
+            right = (size - resize_img.shape[1]) //2+1
         letter_img=cv2.copyMakeBorder(resize_img,int(top),int(bottom),int(left),int(right),cv2.BORDER_CONSTANT,value=0)
     else:
-        rate = float(640/width)
-        resize_img = cv2.resize(img, (640,int(height*rate)), interpolation=cv2.INTER_LANCZOS4)
-        if (640 - resize_img.shape[0])%2==0:
-            top = (640 - resize_img.shape[0]) / 2
-            bottom = (640 - resize_img.shape[0]) / 2
+        rate = float(size/width)
+        resize_img = cv2.resize(img, (size,int(height*rate)), interpolation=cv2.INTER_LANCZOS4)
+        if (size - resize_img.shape[0])%2==0:
+            top = (size - resize_img.shape[0]) / 2
+            bottom = (size - resize_img.shape[0]) / 2
         else:
-            top = (640 - resize_img.shape[0]) // 2+1
-            bottom = (640 - resize_img.shape[0]) // 2
+            top = (size - resize_img.shape[0]) // 2+1
+            bottom = (size - resize_img.shape[0]) // 2
         left = 0
         right = 0
         letter_img=cv2.copyMakeBorder(resize_img,int(top),int(bottom),int(left),int(right),cv2.BORDER_CONSTANT,value=0)
 
-    return letter_img,top,bottom,left,right
+    return letter_img,top,bottom,left,right,rate
 
 def mixup(img_path,mix_img_path,label_path,mix_label_path,dst_folder):
     state = "mixup"
@@ -140,8 +140,10 @@ def mixup(img_path,mix_img_path,label_path,mix_label_path,dst_folder):
     mix_img=cv2.imread(mix_img_path)
     mix_height,mix_width=mix_img.shape[0:2]
 
-    img,ori_top,ori_bottom,ori_left,ori_right=letter_box(img)
-    mix_img,mix_top,mix_bottom,mix_left,mix_right=letter_box(mix_img)
+    img,ori_top,ori_bottom,ori_left,ori_right,ori_rate=letter_box(img)
+    ori_out_height,ori_out_width=img.shape[0:2]
+    mix_img,mix_top,mix_bottom,mix_left,mix_right,mix_rate=letter_box(mix_img)
+    mix_out_height, mix_out_width = mix_img.shape[0:2]
     aug_img=cv2.addWeighted(img,float(alpha),mix_img,float(belta),0)
     cv2.imwrite(os.path.join(aug_img_path,os.path.basename(img_path)[:-4]+f"-{state}.jpg"),aug_img)
     label = open(label_path)
@@ -150,10 +152,21 @@ def mixup(img_path,mix_img_path,label_path,mix_label_path,dst_folder):
     for line in label.readlines():
         strs=line.split()
         cls,_x,_y,_w,_h=strs[0:5]
-        x=(np.float32(_x)*ori_width+ori_left)/(ori_left+ori_width+ori_right)
-        y=(np.float32(_y)*ori_height+ori_top)/(ori_top+ori_height+ori_bottom)
-        w=np.float32(_w)*ori_width/(ori_left+ori_width+ori_right)
-        h=np.float32(_h)*ori_height/(ori_top+ori_height+ori_bottom)
+
+        x1 = np.float32(_x) * ori_width - np.float32(_w) * ori_width / 2
+        y1 = np.float32(_y) * ori_height - np.float32(_h) * ori_height / 2
+        x2 = np.float32(_x) * ori_width + np.float32(_w) * ori_width / 2
+        y2 = np.float32(_y) * ori_height + np.float32(_h) * ori_height / 2
+
+        new_x1=x1*ori_rate+ori_left
+        new_y1=y1*ori_rate+ori_top
+        new_x2=x2*ori_rate+ori_left
+        new_y2=y2*ori_rate+ori_top
+
+        w = (abs(new_x2 - new_x1))/ori_out_width
+        h = (abs(new_y2 - new_y1))/ori_out_height
+        x = ((new_x1 + new_x2) / 2)/ori_out_width
+        y = ((new_y1 + new_y2) / 2)/ori_out_height
 
         dst_label.write(f"{cls} {x} {y} {w} {h}\n")
         dst_label.flush()
@@ -161,10 +174,21 @@ def mixup(img_path,mix_img_path,label_path,mix_label_path,dst_folder):
         strs=line.split()
         cls,_x,_y,_w,_h=strs[0:5]
 
-        x = (np.float32(_x) * mix_width + mix_left) / (mix_left + mix_width + mix_right)
-        y = (np.float32(_y) * mix_height + mix_top) / (mix_top + mix_height + mix_bottom)
-        w = np.float32(_w) * mix_width / (mix_left + mix_width + mix_right)
-        h = np.float32(_h) * mix_height / (mix_top + mix_height + mix_bottom)
+        x1 = np.float32(_x) * mix_width - np.float32(_w) * mix_width / 2
+        y1 = np.float32(_y) * mix_height - np.float32(_h) * mix_height / 2
+        x2 = np.float32(_x) * mix_width + np.float32(_w) * mix_width / 2
+        y2 = np.float32(_y) * mix_height + np.float32(_h) * mix_height / 2
+
+        new_x1 = x1 * mix_rate + mix_left
+        new_y1 = y1 * mix_rate + mix_top
+        new_x2 = x2 * mix_rate + mix_left
+        new_y2 = y2 * mix_rate + mix_top
+
+        w = (abs(new_x2 - new_x1)) / mix_out_width
+        h = (abs(new_y2 - new_y1)) / mix_out_height
+        x = ((new_x1 + new_x2) / 2) / mix_out_width
+        y = ((new_y1 + new_y2) / 2) / mix_out_height
+
         dst_label.write(f"{cls} {x} {y} {w} {h}\n")
         dst_label.flush()
     label.close()
@@ -469,13 +493,13 @@ def fourier_transformation(img_path,label_path,dst_folder,frequency):
     return dst_folder
 
 if __name__ == '__main__':
-    material_src = "/home/yitutong/桌面/liuzhenxing/data/yolo/material/*.png"
-    img_src = "/home/yitutong/桌面/liuzhenxing/data/yolo/images/*.jpg"
-    label_src = "/home/yitutong/桌面/liuzhenxing/data/yolo/labels"
-    dst_folder = "/home/yitutong/桌面/liuzhenxing/data/augument"
+    material_src = r"/home/yitutong/桌面/liuzhenxing/data/yolo/material/*.png"
+    img_src = r"D:\tmp_data\images\*.jpg"
+    label_src = r"D:\tmp_data\labels"
+    dst_folder = r"D:\tmp_data"
     for img_path in glob.glob(img_src):
         label_path=os.path.join(label_src,os.path.basename(img_path)[:-3]+"txt")
-        # flip(img_path, label_path, dst_folder)#翻转增量
+        flip(img_path, label_path, dst_folder)#翻转增量
         # index=np.random.randint(0,len(glob.glob(img_src)))#mixup增量
         # mix_img_path=glob.glob(img_src)[index]
         # mix_label_path=os.path.join(label_src,os.path.basename(mix_img_path)[:-3]+"txt")
@@ -489,4 +513,4 @@ if __name__ == '__main__':
         # sharpening(img_path,label_path,dst_folder,True)#锐化图像增量
         # hist_equalist(img_path,label_path,dst_folder)#直方图均衡增量
         # get_contour(img_path,label_path,dst_folder)#轮廓图增量
-        fourier_transformation(img_path,label_path,dst_folder,True)#傅立叶滤波
+        # fourier_transformation(img_path,label_path,dst_folder,True)#傅立叶滤波

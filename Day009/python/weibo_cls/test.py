@@ -1,5 +1,5 @@
 import torch
-from data import MyDataset
+from data import My_Dataset
 from torch.utils.data import DataLoader
 from net import Model
 from transformers import AdamW,BertTokenizer
@@ -20,7 +20,7 @@ def collate_function(data):
     return input_ids,attention_mask,token_type_ids,labels
 
 #创建数据集
-test_dataset=MyDataset("test")
+test_dataset=My_Dataset("test")
 #创建dataloader
 test_loader=DataLoader(test_dataset,batch_size=32,shuffle=True,drop_last=True,collate_fn=collate_function)
 

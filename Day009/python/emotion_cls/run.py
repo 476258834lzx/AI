@@ -20,7 +20,7 @@ def collate_function(data):
     return input_ids,attention_mask,token_type_ids
 
 def test():
-    model.load_state_dict(torch.load("params/0bert01.pth"))
+    model.load_state_dict(torch.load("params/230bert01.pth"))
     model.eval()
     while True:
         data=input("请输入测试数据(按'Q'退出):")
