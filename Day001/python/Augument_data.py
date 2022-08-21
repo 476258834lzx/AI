@@ -134,7 +134,9 @@ def letter_box(img,size=640):
 def mixup(img_path,mix_img_path,label_path,mix_label_path,dst_folder):
     state = "mixup"
     aug_img_path,aug_label_path=check_path(dst_folder,state)
-    alpha,belta=np.random.uniform(0.3,1,1),np.random.uniform(0.3,1,1)
+    # alpha=np.random.uniform(0.2,0.8,1)
+    alpha=0.5
+    belta=1-alpha
     img=cv2.imread(img_path)
     ori_height,ori_width=img.shape[0:2]
     mix_img=cv2.imread(mix_img_path)

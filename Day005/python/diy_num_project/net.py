@@ -10,8 +10,8 @@ class NetV1(nn.Module):
         h=x@self.w
         #softmax(e的xi次方除以e的j次方求和)
     #   (N*10)=(N*10)/(N*1)广播机制N*1广播到N*10，标量也可以广播到N*10
-        print(torch.exp(h).shape)
-        print(torch.sum(h,dim=1,keepdim=True).shape)
+    #     print(torch.exp(h).shape)
+    #     print(torch.sum(h,dim=1,keepdim=True).shape)
         h=torch.exp(h)/torch.sum(h,dim=1,keepdim=True)
         return h
 
