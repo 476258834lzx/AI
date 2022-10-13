@@ -6,7 +6,7 @@ import traceback
 anno_src=r"F:\data\CelebA\Anno\list_bbox_celeba.txt"
 landmark_src=r"F:\data\CelebA\Anno\list_landmarks_celeba.txt"
 img_src=r"F:\data\CelebA\Img\img_celeba.7z\img_celeba"
-save_path=r"datasets"
+save_path=r"data"
 
 
 def compute_iou(box1, box2):
@@ -133,7 +133,7 @@ for face_size in [12,24,48]:
                         face_resize.save(os.path.join(positive_image_dir,f"{positive_account}.jpg"))
                         positive_account+=1
 
-                    elif 0.6>iou>0.5:
+                    elif 0.6>iou>0.4:
                         part_anno_file.write(f"part/{part_account}.jpg 2 {offset_x1} {offset_y1} {offset_x2} {offset_y2} {offset_px1} {offset_py1} {offset_px2} {offset_py2} {offset_px3} {offset_py3} {offset_px4} {offset_py4} {offset_px5} {offset_py5}\n")
                         part_anno_file.flush()
                         face_resize.save(os.path.join(part_image_dir, f"{part_account}.jpg"))
