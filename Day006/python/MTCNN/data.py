@@ -20,13 +20,14 @@ class FaceDataset(Dataset):
     def __getitem__(self, index):
         strs=self.dataset[index].strip().split(" ")
         cond=torch.Tensor([int(strs[1])])
-        offset=torch.Tensor([float(strs[2]),float(strs[3]),float(strs[4]),float(strs[5]),float(strs[6]),float(strs[7]),float(strs[8]),float(strs[9]),float(strs[10]),float(strs[11]),float(strs[12]),float(strs[13]),float(strs[14]),float(strs[15])])
+        offset=torch.Tensor([float(strs[2]),float(strs[3]),float(strs[4]),float(strs[5])])
+        landmark=torch.Tensor([float(strs[6]),float(strs[7]),float(strs[8]),float(strs[9]),float(strs[10]),float(strs[11]),float(strs[12]),float(strs[13]),float(strs[14]),float(strs[15])])
 
         img_path=os.path.join(self.path,self.size,strs[0])
         img_data=torch.Tensor(np.array(Image.open(img_path))/255-0.5)
         img_data=img_data.permute(2,0,1)
 
-        return img_data,cond,offset
+        return img_data,cond,offset,landmark
 
 if __name__ == '__main__':
     path=r"D:\Relearn\Day006\python\MTCNN\data"
@@ -36,3 +37,4 @@ if __name__ == '__main__':
         print(i[0].shape)
         print(i[1].shape)
         print(i[2].shape)
+        print(i[3].shape)
