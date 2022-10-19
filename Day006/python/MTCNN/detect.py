@@ -1,6 +1,5 @@
 import torch
 from PIL import Image,ImageDraw
-import numpy as np
 from utils import general
 import net
 from torchvision import transforms
@@ -15,6 +14,19 @@ r_nms=0.5
 
 o_cls=0.3
 o_nms=0.5
+
+def square(boxes):
+    square_bbox=boxes.copy()
+    if boxes.shape[0]==0:
+        return torch.tensor([])
+    h=boxes[:,3]-boxes[:,1]
+    w=boxes[:,2]-boxes[:,0]
+    max_side=torch.maximum(h,w)
+    square_bbox[:,0]=boxes[:,0]+w*0.5-max_side*0.5
+    square_bbox[:,1]=boxes[:,1]+h*0.5-max_side*0.5
+    square_bbox[:,2]=square_bbox[:,0]+max_side
+    square_bbox[:,3]=square_bbox[:,1]+max_side
+    return square_bbox
 
 class Detecter:
     def __init__(self,pnet_param,rnet_param,onet_param,isCuda=True):
@@ -45,7 +57,7 @@ class Detecter:
         start_time=time.time()
         pnet_boxes=self.__pnet_detect(image)
         if pnet_boxes.shape[0]==0:
-            return np.array([])
+            return torch.tensor([])
         end_time=time.time()
         p_time=end_time-start_time
 
@@ -53,7 +65,7 @@ class Detecter:
         start_time = time.time()
         rnet_boxes = self.__rnet_detect(image,pnet_boxes)
         if rnet_boxes.shape[0] == 0:
-            return np.array([])
+            return torch.tensor([])
         end_time = time.time()
         r_time = end_time - start_time
 
@@ -61,7 +73,7 @@ class Detecter:
         start_time = time.time()
         onet_boxes = self.__onet_detect(image, rnet_boxes)
         if onet_boxes.shape[0] == 0:
-            return np.array([])
+            return torch.tensor([])
         end_time = time.time()
         o_time = end_time - start_time
 
@@ -99,7 +111,6 @@ class Detecter:
 
         return [x1,y1,x2,y2,cls,px1,py1,px2,py2,px3,py3,px4,py4,px5,py5]
 
-
     def __pnet_detect(self,image):
         boxes=[]
         img=image
@@ -116,9 +127,9 @@ class Detecter:
 
             _cls,_offset,_landmark=self.pnet(img_data)
 
-            cls=_cls[0][0].cpu().data
-            offset=_offset[0].cpu().data
-            landmark=_landmark[0].cpu().data
+            cls=_cls[0][0]
+            offset=_offset[0]
+            landmark=_landmark[0]
             idxs=torch.nonzero(torch.gt(cls,p_cls))#HW中的True索引
 
             for idx in idxs:
@@ -132,8 +143,125 @@ class Detecter:
 
         return general.nms(torch.tensor(boxes),p_nms)
 
+    def __rnet_detect(self,image,pnet_boxes):
+        _img_dataset=[]
+        _pnet_boxes=square(pnet_boxes)
+        for _box in _pnet_boxes:
+            _x1=int(_box[0])
+            _y1=int(_box[1])
+            _x2=int(_box[2])
+            _y2=int(_box[3])
+            img=image.crop((_x1,_y1,_x2,_y2))
+            img=img.resize((24,24))
+            img_data=self.__image__transformer(img)
+            _img_dataset.append(img_data)
+        img_dataset=torch.stack(_img_dataset)
+        if self.isCuda:
+            img_dataset=img_dataset.cuda()
 
+        #N1    N4      N10
+        _cls,_offset,_landmark=self.rnet(img_dataset)
 
+        boxes=[]
+        idxs,_=torch.where(_cls>r_cls)#不是N*1,N*1是逻辑运算得到的布尔矩阵的形状，这里直接拿到索引
+        for idx in idxs:#1,True or False
+            _box=_pnet_boxes[idx]
+            _x1=int(_box[0])
+            _y1=int(_box[1])
+            _x2=int(_box[2])
+            _y2=int(_box[3])
+            _px1 = int(_box[5])
+            _py1 = int(_box[6])
+            _px2 = int(_box[7])
+            _py2 = int(_box[8])
+            _px3 = int(_box[9])
+            _py3 = int(_box[10])
+            _px4 = int(_box[11])
+            _py4 = int(_box[12])
+            _px5 = int(_box[13])
+            _py5 = int(_box[14])
+
+            ow=_x2-_x1
+            oh=_y2-_y1
+
+            x1 = _x1 + ow * _offset[idx][0]
+            y1 = _y1 + oh * _offset[idx][1]
+            x2 = _x2 + ow * _offset[idx][2]
+            y2 = _y2 + oh * _offset[idx][3]
+            px1 = _px1 + ow * _landmark[idx][0]
+            py1 = _py1 + oh * _landmark[idx][1]
+            px2 = _px2 + ow * _landmark[idx][2]
+            py2 = _py2 + oh * _landmark[idx][3]
+            px3 = _px3 + ow * _landmark[idx][4]
+            py3 = _py3 + oh * _landmark[idx][5]
+            px4 = _px4 + ow * _landmark[idx][6]
+            py4 = _py4 + oh * _landmark[idx][7]
+            px5 = _px5 + ow * _landmark[idx][8]
+            py5 = _py5 + oh * _landmark[idx][9]
+
+            boxes.append([x1,y1,x2,y2,_cls[idx][0],px1,py1,px2,py2,px3,py3,px4,py4,px5,py5])
+
+        return  general.nms(torch.tensor(boxes),r_nms)
+
+    def __onet_detect(self,image,rnet_boxes):
+        _img_dataset = []
+        _rnet_boxes = square(rnet_boxes)
+        for _box in _rnet_boxes:
+            _x1 = int(_box[0])
+            _y1 = int(_box[1])
+            _x2 = int(_box[2])
+            _y2 = int(_box[3])
+            img = image.crop((_x1, _y1, _x2, _y2))
+            img = img.resize((48, 48))
+            img_data = self.__image__transformer(img)
+            _img_dataset.append(img_data)
+        img_dataset = torch.stack(_img_dataset)
+        if self.isCuda:
+            img_dataset = img_dataset.cuda()
+
+        # N1    N4      N10
+        _cls, _offset, _landmark = self.onet(img_dataset)
+        
+        boxes = []
+        idxs, _ = torch.where(_cls > o_cls)  # 不是N*1,N*1是逻辑运算得到的布尔矩阵的形状，这里直接拿到索引
+        for idx in idxs:  # 1,True or False
+            _box = _rnet_boxes[idx]
+            _x1 = int(_box[0])
+            _y1 = int(_box[1])
+            _x2 = int(_box[2])
+            _y2 = int(_box[3])
+            _px1 = int(_box[5])
+            _py1 = int(_box[6])
+            _px2 = int(_box[7])
+            _py2 = int(_box[8])
+            _px3 = int(_box[9])
+            _py3 = int(_box[10])
+            _px4 = int(_box[11])
+            _py4 = int(_box[12])
+            _px5 = int(_box[13])
+            _py5 = int(_box[14])
+
+            ow = _x2 - _x1
+            oh = _y2 - _y1
+
+            x1 = _x1 + ow * _offset[idx][0]
+            y1 = _y1 + oh * _offset[idx][1]
+            x2 = _x2 + ow * _offset[idx][2]
+            y2 = _y2 + oh * _offset[idx][3]
+            px1 = _px1 + ow * _landmark[idx][0]
+            py1 = _py1 + oh * _landmark[idx][1]
+            px2 = _px2 + ow * _landmark[idx][2]
+            py2 = _py2 + oh * _landmark[idx][3]
+            px3 = _px3 + ow * _landmark[idx][4]
+            py3 = _py3 + oh * _landmark[idx][5]
+            px4 = _px4 + ow * _landmark[idx][6]
+            py4 = _py4 + oh * _landmark[idx][7]
+            px5 = _px5 + ow * _landmark[idx][8]
+            py5 = _py5 + oh * _landmark[idx][9]
+
+            boxes.append([x1, y1, x2, y2, _cls[idx][0], px1, py1, px2, py2, px3, py3, px4, py4, px5, py5])
+
+        return general.nms(torch.tensor(boxes), o_nms,isMin=True)
 
 
 if __name__ == '__main__':
