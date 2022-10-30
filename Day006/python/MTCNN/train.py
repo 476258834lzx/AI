@@ -65,13 +65,11 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-                if i%100==0:
+                if i%1000==0:
                     print("i=",i,"loss:",loss.cpu().data.numpy(),"cls_loss:",cls_loss.cpu().data.numpy(),"offset_loss:",offset_loss.cpu().data.numpy(),"landmark_loss:",landmark_loss.cpu().data.numpy())
 
-
-            if epoch%500==0:
-                torch.save(self.net.state_dict(),self.save_path)
-                print("save success!")
+            torch.save(self.net.state_dict(),self.save_path)
+            print(epoch,"save success!")
 
             epoch += 1
 

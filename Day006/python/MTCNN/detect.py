@@ -266,3 +266,36 @@ class Detecter:
 
 if __name__ == '__main__':
     image_path=r"test_img"
+    for i in os.listdir(image_path):
+        detector=Detecter()
+        img=Image.open(os.path.join(image_path,i))
+        boxes=detector.detect(img)
+        imDraw=ImageDraw.Draw(img)
+        for box in boxes:
+            x1=int(box[0])
+            y1=int(box[1])
+            x2=int(box[2])
+            y2=int(box[3])
+
+            px1=int(box[5])
+            py1=int(box[6])
+            px2=int(box[7])
+            py2=int(box[8])
+            px3=int(box[9])
+            py3=int(box[10])
+            px4=int(box[11])
+            py4=int(box[12])
+            px5=int(box[13])
+            py5=int(box[14])
+
+            print((x1,y1,x2,y2))
+
+            print("conf:",box[4])
+            imDraw.rectangle((x1,y1,x2,y2),outline="red")
+            imDraw.ellipse((px1-1,py1-1,px1+1,py1+1),outline="red")
+            imDraw.ellipse((px2-1,py2-1,px2+1,py2+1),outline="red")
+            imDraw.ellipse((px3-1,py3-1,px3+1,py3+1),outline="red")
+            imDraw.ellipse((px4-1,py4-1,px4+1,py4+1),outline="red")
+            imDraw.ellipse((px5-1,py5-1,px5+1,py5+1),outline="red")
+
+        img.show()
