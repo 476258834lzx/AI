@@ -1,7 +1,7 @@
 import torch
 from PIL import Image,ImageDraw
 from utils import general
-import net
+from net import *
 from torchvision import transforms
 import time
 import os
@@ -16,7 +16,7 @@ o_cls=0.3
 o_nms=0.5
 
 def square(boxes):
-    square_bbox=boxes.copy()
+    square_bbox=boxes
     if boxes.shape[0]==0:
         return torch.tensor([])
     h=boxes[:,3]-boxes[:,1]
@@ -31,18 +31,18 @@ def square(boxes):
 class Detecter:
     def __init__(self,pnet_param,rnet_param,onet_param,isCuda=True):
         self.isCuda=isCuda
-        self.pnet=pnet_param
-        self.rnet=rnet_param
-        self.onet=onet_param
+        self.pnet=PNet()
+        self.rnet=RNet()
+        self.onet=ONet()
+
+        self.pnet.load_state_dict(torch.load(pnet_param))
+        self.rnet.load_state_dict(torch.load(rnet_param))
+        self.onet.load_state_dict(torch.load(onet_param))
 
         if self.isCuda:
             self.pnet = self.pnet.cuda()
             self.rnet = self.rnet.cuda()
             self.onet = self.onet.cuda()
-
-        self.pnet.load_state_dict(torch.load(pnet_param))
-        self.rnet.load_state_dict(torch.load(rnet_param))
-        self.onet.load_state_dict(torch.load(onet_param))
 
         self.pnet.eval()
         self.rnet.eval()
@@ -267,7 +267,7 @@ class Detecter:
 if __name__ == '__main__':
     image_path=r"test_img"
     for i in os.listdir(image_path):
-        detector=Detecter()
+        detector=Detecter(r"params\pnet.pt",r"params\rnet.pt",r"params\onet.pt")
         img=Image.open(os.path.join(image_path,i))
         boxes=detector.detect(img)
         imDraw=ImageDraw.Draw(img)
@@ -289,13 +289,14 @@ if __name__ == '__main__':
             py5=int(box[14])
 
             print((x1,y1,x2,y2))
+            print((px1,py1,px2,py2,px3,py3,px4,py4,px5,py5))
 
             print("conf:",box[4])
             imDraw.rectangle((x1,y1,x2,y2),outline="red")
-            imDraw.ellipse((px1-1,py1-1,px1+1,py1+1),outline="red")
-            imDraw.ellipse((px2-1,py2-1,px2+1,py2+1),outline="red")
-            imDraw.ellipse((px3-1,py3-1,px3+1,py3+1),outline="red")
-            imDraw.ellipse((px4-1,py4-1,px4+1,py4+1),outline="red")
-            imDraw.ellipse((px5-1,py5-1,px5+1,py5+1),outline="red")
+            imDraw.ellipse((px1-2,py1-2,px1+2,py1+2),outline="blue")
+            imDraw.ellipse((px2-2,py2-2,px2+2,py2+2),outline="blue")
+            imDraw.ellipse((px3-2,py3-2,px3+2,py3+2),outline="blue")
+            imDraw.ellipse((px4-2,py4-2,px4+2,py4+2),outline="blue")
+            imDraw.ellipse((px5-2,py5-2,px5+2,py5+2),outline="blue")
 
         img.show()
