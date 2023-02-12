@@ -30,7 +30,12 @@ class Trainer:
         dataloader=DataLoader(faceDataset,batch_size=512,shuffle=True,drop_last=True)
         epoch=0
         while True:
-            for i ,(img_data,cond,offset,landmark) in enumerate(dataloader):
+            sum_loss = 0
+            sum_cls_loss = 0
+            sum_offset_loss = 0
+            sum_landmark_loss = 0#取一个轮次中所有batch列表的损失的平均值
+            account = len(dataloader)
+            for i ,(img_data,cond,offset,landmark) in enumerate(dataloader):#共20000张图，一个batch取512，enumerate中为batch列表
                 if self.isCuda:
                     img_data=img_data.cuda()
                     cond=cond.cuda()
@@ -65,11 +70,16 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-                if i%1000==0:
-                    print("i=",i,"loss:",loss.cpu().data.numpy(),"cls_loss:",cls_loss.cpu().data.numpy(),"offset_loss:",offset_loss.cpu().data.numpy(),"landmark_loss:",landmark_loss.cpu().data.numpy())
+                sum_loss+=loss.cpu().data.numpy()
+                sum_cls_loss+=cls_loss.cpu().data.numpy()
+                sum_offset_loss+=offset_loss.cpu().data.numpy()
+                sum_landmark_loss+=landmark_loss.cpu().data.numpy()
 
-            torch.save(self.net.state_dict(),self.save_path)
-            print(epoch,"save success!")
+            print("epoch=", epoch, "loss:", sum_loss / account, "cls_loss:", sum_cls_loss / account, "offset_loss:",
+                  sum_offset_loss / account, "landmark_loss:", sum_landmark_loss / account)
+            if epoch%10==0:
+                torch.save(self.net.state_dict(),self.save_path)
+                print("save success!")
 
             epoch += 1
 

@@ -120,6 +120,7 @@ class Detecter:
         scale=1
         while min_side_len>12:
             img_data=self.__image__transformer(img)
+            img_data=img_data[:3,...]
             if self.isCuda:
                 img_data=img_data.cuda()
 
@@ -154,6 +155,7 @@ class Detecter:
             img=image.crop((_x1,_y1,_x2,_y2))
             img=img.resize((24,24))
             img_data=self.__image__transformer(img)
+            img_data = img_data[:3, ...]
             _img_dataset.append(img_data)
         img_dataset=torch.stack(_img_dataset)
         if self.isCuda:
@@ -170,16 +172,6 @@ class Detecter:
             _y1=int(_box[1])
             _x2=int(_box[2])
             _y2=int(_box[3])
-            _px1 = int(_box[5])
-            _py1 = int(_box[6])
-            _px2 = int(_box[7])
-            _py2 = int(_box[8])
-            _px3 = int(_box[9])
-            _py3 = int(_box[10])
-            _px4 = int(_box[11])
-            _py4 = int(_box[12])
-            _px5 = int(_box[13])
-            _py5 = int(_box[14])
 
             ow=_x2-_x1
             oh=_y2-_y1
@@ -188,16 +180,16 @@ class Detecter:
             y1 = _y1 + oh * _offset[idx][1]
             x2 = _x2 + ow * _offset[idx][2]
             y2 = _y2 + oh * _offset[idx][3]
-            px1 = _px1 + ow * _landmark[idx][0]
-            py1 = _py1 + oh * _landmark[idx][1]
-            px2 = _px2 + ow * _landmark[idx][2]
-            py2 = _py2 + oh * _landmark[idx][3]
-            px3 = _px3 + ow * _landmark[idx][4]
-            py3 = _py3 + oh * _landmark[idx][5]
-            px4 = _px4 + ow * _landmark[idx][6]
-            py4 = _py4 + oh * _landmark[idx][7]
-            px5 = _px5 + ow * _landmark[idx][8]
-            py5 = _py5 + oh * _landmark[idx][9]
+            px1 = _x1 + ow * _landmark[idx][0]
+            py1 = _y1 + oh * _landmark[idx][1]
+            px2 = _x1 + ow * _landmark[idx][2]
+            py2 = _y1 + oh * _landmark[idx][3]
+            px3 = _x1 + ow * _landmark[idx][4]
+            py3 = _y1 + oh * _landmark[idx][5]
+            px4 = _x1 + ow * _landmark[idx][6]
+            py4 = _y1 + oh * _landmark[idx][7]
+            px5 = _x1 + ow * _landmark[idx][8]
+            py5 = _y1 + oh * _landmark[idx][9]
 
             boxes.append([x1,y1,x2,y2,_cls[idx][0],px1,py1,px2,py2,px3,py3,px4,py4,px5,py5])
 
@@ -214,6 +206,7 @@ class Detecter:
             img = image.crop((_x1, _y1, _x2, _y2))
             img = img.resize((48, 48))
             img_data = self.__image__transformer(img)
+            img_data = img_data[:3, ...]
             _img_dataset.append(img_data)
         img_dataset = torch.stack(_img_dataset)
         if self.isCuda:
@@ -230,16 +223,6 @@ class Detecter:
             _y1 = int(_box[1])
             _x2 = int(_box[2])
             _y2 = int(_box[3])
-            _px1 = int(_box[5])
-            _py1 = int(_box[6])
-            _px2 = int(_box[7])
-            _py2 = int(_box[8])
-            _px3 = int(_box[9])
-            _py3 = int(_box[10])
-            _px4 = int(_box[11])
-            _py4 = int(_box[12])
-            _px5 = int(_box[13])
-            _py5 = int(_box[14])
 
             ow = _x2 - _x1
             oh = _y2 - _y1
@@ -248,16 +231,16 @@ class Detecter:
             y1 = _y1 + oh * _offset[idx][1]
             x2 = _x2 + ow * _offset[idx][2]
             y2 = _y2 + oh * _offset[idx][3]
-            px1 = _px1 + ow * _landmark[idx][0]
-            py1 = _py1 + oh * _landmark[idx][1]
-            px2 = _px2 + ow * _landmark[idx][2]
-            py2 = _py2 + oh * _landmark[idx][3]
-            px3 = _px3 + ow * _landmark[idx][4]
-            py3 = _py3 + oh * _landmark[idx][5]
-            px4 = _px4 + ow * _landmark[idx][6]
-            py4 = _py4 + oh * _landmark[idx][7]
-            px5 = _px5 + ow * _landmark[idx][8]
-            py5 = _py5 + oh * _landmark[idx][9]
+            px1 = _x1 + ow * _landmark[idx][0]
+            py1 = _y1 + oh * _landmark[idx][1]
+            px2 = _x1 + ow * _landmark[idx][2]
+            py2 = _y1 + oh * _landmark[idx][3]
+            px3 = _x1 + ow * _landmark[idx][4]
+            py3 = _y1 + oh * _landmark[idx][5]
+            px4 = _x1 + ow * _landmark[idx][6]
+            py4 = _y1 + oh * _landmark[idx][7]
+            px5 = _x1 + ow * _landmark[idx][8]
+            py5 = _y1 + oh * _landmark[idx][9]
 
             boxes.append([x1, y1, x2, y2, _cls[idx][0], px1, py1, px2, py2, px3, py3, px4, py4, px5, py5])
 

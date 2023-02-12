@@ -2,8 +2,10 @@
 .idea/
 out/
 data/
+img/
 cmake-build-debug/
 cmake-build-release/
+logs/
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
 *.jpg
 *.jpeg

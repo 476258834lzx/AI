@@ -83,10 +83,12 @@ for face_size in [12,24,48]:
                     continue
 
                 #小平偏移坐标
-                x1=int(x1+w*0.12)
-                y1=int(y1+h*0.1)
-                x2=int(x1+w*0.9)
-                y2=int(y1+h*0.85)
+                # x1=int(x1+w*0.12)
+                # y1=int(y1+h*0.1)
+                # x2=int(x1+w*0.9)
+                # y2=int(y1+h*0.85)
+                x2=x1+w
+                y2=y1+h
                 boxes=[x1,y1,x2,y2]
 
                 cx=x1+w/2

@@ -45,7 +45,7 @@ def iou(box,boxes,isMin=False,isTorch=True):
 
 def nms(boxes,thresh,isMin=False,isTorch=True):
     if isTorch:
-        if boxes is None:
+        if len(boxes)==0:
             return torch.Tensor([])
         #x1,y1,x2,y2,c
         _boxes=boxes[torch.argsort(-boxes[:,4])]
@@ -62,7 +62,7 @@ def nms(boxes,thresh,isMin=False,isTorch=True):
         if _boxes.shape[0]>0:
             r_boxes.append(_boxes[0])
     else:
-        if boxes is None:
+        if len(boxes)==0:
             return np.array([])
         #x1,y1,x2,y2,c
         _boxes=boxes[np.argsort(-boxes[:,4])]
@@ -80,6 +80,24 @@ def nms(boxes,thresh,isMin=False,isTorch=True):
             r_boxes.append(_boxes[0])
 
     return torch.stack(r_boxes) if isTorch else np.stack(r_boxes)
+
+def convert_square(boxes):
+    if boxes.shape[0] == 0:
+        return np.array([])
+    center_x = (boxes[:, 2] + boxes[:, 0]) / 2
+    center_y = (boxes[:, 3] + boxes[:, 1]) / 2
+    side = np.maximum((boxes[:, 2] - boxes[:, 0]), (boxes[:, 3] - boxes[:, 1]))
+    boxes[:, 0] = center_x - side / 2
+    boxes[:, 1] = center_y - side / 2
+    boxes[:, 2] = center_x + side / 2
+    boxes[:, 3] = center_y + side / 2
+    # boxes = boxes.astype(np.int32)  #0.98的置信度会变成0
+
+    boxes = boxes[boxes[:, 0] > 0]
+    boxes = boxes[boxes[:, 1] > 0]
+    boxes = boxes[boxes[:, 2] > 0]
+    boxes = boxes[boxes[:, 3] > 0]
+    return boxes
 
 if __name__ == '__main__':
     bs=np.random.randint(0,50,(10,14))
