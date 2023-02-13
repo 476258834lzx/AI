@@ -31,8 +31,8 @@ class Train:
 
         #优化算法
         # self.opt=optim.Adam(self.net.parameters())
-        self.opt=optim.SGD(self.net.parameters(),lr=0.0001,momentum=0.9)
-        self.exp_lr_scheduler=optim.lr_scheduler.StepLR(self.opt,step_size=10,gamma=0.5)
+        self.opt=optim.SGD(self.net.parameters(),lr=0.01,momentum=0.9)
+        self.exp_lr_scheduler=optim.lr_scheduler.StepLR(self.opt,step_size=150,gamma=0.5)
 
         #损失函数
         self.loss_function=nn.NLLLoss()

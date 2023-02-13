@@ -25,4 +25,4 @@ img2=tf(Image.open("test_img")).to(DEVICE)
 vector2=net.register(torch.unsqueeze(img2,dim=0))
 
 simalarity=compare_cosion(vector1,vector2)
-print(simalarity)
+print(simalarity) 
