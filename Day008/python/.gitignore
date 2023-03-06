@@ -4,6 +4,7 @@ out/
 data/
 cmake-build-debug/
 cmake-build-release/
+weight_log/
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
 *.jpg
 *.jpeg
