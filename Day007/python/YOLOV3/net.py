@@ -13,7 +13,7 @@ class ConvolutionalLayer(nn.Module):
     def __init__(self,in_channels,out_channels,kernel_size,stride,padding):
         super(ConvolutionalLayer, self).__init__()
         self.sub_module=nn.Sequential(
-            nn.Conv2d(in_channels,out_channels,kernel_size,stride,padding),
+            nn.Conv2d(in_channels,out_channels,kernel_size,stride,padding,bias=False),
             nn.BatchNorm2d(out_channels),
             nn.LeakyReLU(0.1)
         )
@@ -113,7 +113,7 @@ class Yolov3(nn.Module):
         )
 
         self.up_26=nn.Sequential(
-            ConvolutionalLayer(512,256,3,1,1),
+            ConvolutionalLayer(512,256,3,1,1),#使用3*3做特征学习，导致32*32原图特征图会变成1*1，该卷积核报错
             Upsamplelasyer()
         )
 
@@ -141,8 +141,25 @@ class Yolov3(nn.Module):
         )
 
     def forward(self,x):
+        f_52=self.trunk_52(x)#对应原图8*8的区域
+        f_26=self.trunk_26(f_52)#对应原图16*16的区域
+        f_13=self.trunk_13(f_26)#对应原图32*32的区域
 
-        return 0
+        conset_13=self.convset_13(f_13)
+        det_13=self.detection_13(conset_13)
+
+        up_26=self.up_26(conset_13)
+        route_26=torch.cat((up_26,f_26),dim=1)
+        conset_26=self.convset_26(route_26)
+        det_26=self.detection_26(conset_26)
+
+        up_52=self.up_52(conset_26)
+        route_52=torch.cat((up_52,f_52),dim=1)
+        conset_52=self.convset_52(route_52)
+        det_52=self.detection_52(conset_52)
+
+        return det_13,det_26,det_52
+
 
 if __name__ == '__main__':
     yolo=Yolov3()
