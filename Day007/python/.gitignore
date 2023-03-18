@@ -5,6 +5,7 @@ data/
 cmake-build-debug/
 cmake-build-release/
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
+*.pt
 *.jpg
 *.jpeg
 *.png
