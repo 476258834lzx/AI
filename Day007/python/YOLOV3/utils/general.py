@@ -3,15 +3,15 @@ import numpy as np
 import cv2
 
 def iou(box,boxes,isMin=False,isTorch=True):
-
+    # conf,cx,cy,w,h,cls
     if isTorch:
-        box_area = (box[2] - box[0]) * (box[3] - box[1])
-        area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        box_area = box[3]*box[4]
+        area = boxes[:,3]*boxes[:,4]
 
-        xx1 = torch.maximum(box[0], boxes[:,0])
-        yy1 = torch.maximum(box[1], boxes[:,1])
-        xx2 = torch.minimum(box[2], boxes[:,2])
-        yy2 = torch.minimum(box[3], boxes[:,3])
+        xx1 = torch.maximum(box[1]-box[3]/2, boxes[:,1]-boxes[:,3]/2)
+        yy1 = torch.maximum(box[2]-box[4]/2, boxes[:,2]-boxes[:,4]/2)
+        xx2 = torch.minimum(box[1]+box[3]/2, boxes[:,1]+boxes[:,3]/2)
+        yy2 = torch.minimum(box[2]+box[4]/2, boxes[:,2]+boxes[:,4]/2)
 
         w = torch.maximum(torch.Tensor([0]), xx2 - xx1)
         h = torch.maximum(torch.Tensor([0]), yy2 - yy1)
@@ -24,13 +24,13 @@ def iou(box,boxes,isMin=False,isTorch=True):
             ovr = torch.true_divide(inter, (box_area + area - inter))
 
     else:
-        box_area = (box[2] - box[0]) * (box[3] - box[1])
-        area = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+        box_area = box[3] * box[4]
+        area = boxes[:, 3] * boxes[:, 4]
 
-        xx1 = np.maximum(box[0], boxes[:,0])
-        yy1 = np.maximum(box[1], boxes[:,1])
-        xx2 = np.minimum(box[2], boxes[:,2])
-        yy2 = np.minimum(box[3], boxes[:,3])
+        xx1 = np.maximum(box[1]-box[3]/2, boxes[:,1]-boxes[:,3]/2)
+        yy1 = np.maximum(box[2]-box[4]/2, boxes[:,2]-boxes[:,4]/2)
+        xx2 = np.minimum(box[1]+box[3]/2, boxes[:,1]+boxes[:,3]/2)
+        yy2 = np.minimum(box[2]+box[4]/2, boxes[:,2]+boxes[:,4]/2)
 
         w = np.maximum(0, xx2 - xx1)
         h = np.maximum(0, yy2 - yy1)
@@ -48,8 +48,8 @@ def nms(boxes,thresh,isMin=False,isTorch=True):
     if isTorch:
         if len(boxes)==0:
             return torch.Tensor([])
-        #x1,y1,x2,y2,c
-        _boxes=boxes[torch.argsort(-boxes[:,4])]
+        #conf,cx,cy,w,h,cls
+        _boxes=boxes[torch.argsort(-boxes[:,0])]
         r_boxes=[]
 
         while _boxes.shape[0]>1:
@@ -66,7 +66,7 @@ def nms(boxes,thresh,isMin=False,isTorch=True):
         if len(boxes)==0:
             return np.array([])
         #x1,y1,x2,y2,c
-        _boxes=boxes[np.argsort(-boxes[:,4])]
+        _boxes=boxes[np.argsort(-boxes[:,0])]
         r_boxes=[]
 
         while _boxes.shape[0]>1:

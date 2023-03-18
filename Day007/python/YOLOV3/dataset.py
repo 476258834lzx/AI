@@ -36,7 +36,7 @@ class Mydata(Dataset):
         img_data=cv2.imread(img_path)
         ori_height, ori_width = img_data.shape[0:2]
         img_data,top,bottom,left,right,ori_rate=letter_box(img_data,max(cfg.IMG_WIDTH,cfg.IMG_HEIGHT))
-        img_data=(img_data/255).transpose(2,0,1)
+        img_data=(img_data/255-0.5).transpose(2,0,1)
         label_data=open(label_path)
         item=0
         for feature_size,anchors in cfg.ANCHORS.items():
@@ -66,11 +66,13 @@ class Mydata(Dataset):
                     anchor_area=cfg.ANCHORS_AREA[feature_size][i]
                     p_w,p_h=w/anchor[0],h/anchor[1]
                     p_area=w*h
-                    p_iou=min(p_area,anchor_area)/max(p_area,anchor_area)
+                    p_iou=min(p_area,anchor_area)/max(p_area,anchor_area)#YOLOV45更改了iou的计算方式
                     item+=1
-                    #                          H             W
-                    labels[feature_size][int(cx_index),int(cy_index),i]=np.array([p_iou,cx_offset,cy_offset,np.log(p_w),np.log(p_h),cls])
-        return labels[13],labels[26],labels[52],img_data
+                    last_iou=labels[feature_size][int(cx_index),int(cy_index),i,0]
+                    if p_iou>=last_iou:
+                    #                          H             W                                                 限制值域为-∞到∞
+                        labels[feature_size][int(cx_index),int(cy_index),i]=np.array([p_iou,cx_offset,cy_offset,np.log(p_w),np.log(p_h),cls])
+        return np.float32(labels[13]),np.float32(labels[26]),np.float32(labels[52]),np.float32(img_data)
 
 if __name__ == '__main__':
     data_path = "data/fisheye_parking"

@@ -109,7 +109,7 @@ class Yolov3(nn.Module):
 
         self.detection_13=nn.Sequential(
             ConvolutionalLayer(512,1024,3,1,1),
-            nn.Conv2d(1024,45,(1,1),(1,1),0)
+            nn.Conv2d(1024,30,(1,1),(1,1),0)
         )
 
         self.up_26=nn.Sequential(
@@ -123,7 +123,7 @@ class Yolov3(nn.Module):
 
         self.detection_26=nn.Sequential(
             ConvolutionalLayer(256,512,3,1,1),
-            nn.Conv2d(512,45,(1,1),(1,1),0)
+            nn.Conv2d(512,30,(1,1),(1,1),0)
         )
 
         self.up_52=nn.Sequential(
@@ -137,7 +137,7 @@ class Yolov3(nn.Module):
 
         self.detection_52=nn.Sequential(
             ConvolutionalLayer(128,256,3,1,1),
-            nn.Conv2d(256,45,(1,1),(1,1),0)
+            nn.Conv2d(256,30,(1,1),(1,1),0)
         )
 
     def forward(self,x):
