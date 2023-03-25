@@ -71,7 +71,7 @@ class Mydata(Dataset):
                     last_iou=labels[feature_size][int(cx_index),int(cy_index),i,0]
                     if p_iou>=last_iou:
                     #                          H             W                                                 限制值域为-∞到∞
-                        labels[feature_size][int(cx_index),int(cy_index),i]=np.array([p_iou,cx_offset,cy_offset,np.log(p_w),np.log(p_h),cls])
+                        labels[feature_size][int(cy_index),int(cx_index),i]=np.array([p_iou,cx_offset,cy_offset,np.log(p_w),np.log(p_h),cls])
         return np.float32(labels[13]),np.float32(labels[26]),np.float32(labels[52]),np.float32(img_data)
 
 if __name__ == '__main__':

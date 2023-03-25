@@ -6,6 +6,7 @@ img/
 cmake-build-debug/
 cmake-build-release/
 logs/
+weights/
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
 *.jpg
 *.jpeg

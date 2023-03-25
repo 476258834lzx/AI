@@ -6,7 +6,7 @@ import cfg
 from torch import nn
 from YOLOV3.utils.general import *
 
-classes=['vehicle','cons','parking_lock','person','column']
+classes=['vehicle','cons','person','parking_lock','column']
 
 class Detecter:
     def __init__(self, net_param, anchors,class_num,isCuda=True):
@@ -79,14 +79,14 @@ class Detecter:
 
 if __name__ == '__main__':
     image_path = r"test_img"
+    color = np.random.randint(0, 256, (len(classes), 3), dtype=np.uint8)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    detector = Detecter(r"weights\best.pt", cfg.ANCHORS, cfg.CLASS_NUM)
     for i in os.listdir(image_path):
-        detector = Detecter(r"weights\best.pt",cfg.ANCHORS,cfg.CLASS_NUM)
-        color = np.random.randint(0, 256, (len(classes), 3), dtype=np.uint8)
         img = cv2.imread(os.path.join(image_path, i))
         img_data, top, _, left, _, rate=letter_box(img,416)
         img_data = torch.Tensor((img_data / 255 - 0.5).transpose(2, 0, 1)).unsqueeze_(0)
         boxes = detector.detect(img_data,0.25,0.45).detach().numpy()
-        font=cv2.FONT_HERSHEY_SIMPLEX
         for goal in boxes:
             conf,cx,cy,w,h,cls=goal[0:6]
             revise_cx,revise_cy=(cx-left)/rate,(cy-top)/rate
@@ -95,7 +95,7 @@ if __name__ == '__main__':
             # print(conf,revise_cx,revise_cy,revise_w,revise_h,cls)
             cls_color=color[int(cls)].tolist()
             cv2.rectangle(img,(x1,y1),(x2,y2),color=cls_color,thickness=2)#左上角，右下角，颜色，线宽-1填充
-            cv2.putText(img, f"{classes[int(cls)]}:{goal[0]}", (x1,y1-30), font,1,cls_color, 1,
+            cv2.putText(img, f"{classes[int(cls)]}:{conf}", (x1,y1-10), font,1,cls_color, 1,
                         lineType=cv2.LINE_AA)  # 字符，字符左上角，字体，字体间距，颜色，线宽，像素补值法防锯齿
             #
         cv2.imshow("img", img)
