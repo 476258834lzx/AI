@@ -37,7 +37,6 @@ class Detecter:
         segimg=self.net(image)#N*3*512*512
         segimg=segimg.argmax(dim=1).cpu()#N*512*512
         mask=label2image(segimg,self.color)
-        a=image.cpu().squeeze(0)
         out=Image.blend(transforms.ToPILImage()(image.cpu().squeeze(0)),transforms.ToPILImage()(mask.squeeze(0)),0.4)#mask的alpha
 
         return out

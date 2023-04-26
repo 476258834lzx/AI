@@ -18,5 +18,3 @@ cx,cy=int(M['m10']/M['m00']),int(M['m01']/M['m00'])
 print("重心:",cx,cy)
 area=cv2.contourArea(contours[0])
 print("面积:",area)
-perimeter=cv2.arcLength(contours[0],True)#是否闭合
-print("周长:",perimeter)
