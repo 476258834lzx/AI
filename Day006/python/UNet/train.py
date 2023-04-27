@@ -115,7 +115,7 @@ class Train:
                 loss.backward()
                 self.opt.step()
                 print(loss)
-                if i%10==0:
+                if epoch%2==0:
                     self.summaryWriter.add_scalars("loss", {"train_loss": loss}, i)
 
                 #没有使用PIL p模式打开，纯黑掩码看不着
