@@ -1,16 +1,12 @@
-import torch.nn
-import os
-from torch.utils.tensorboard import SummaryWriter
+import torch.optim as optim
 from torch.utils.data import DataLoader
 from data import Mydataset
 from net import *
-from torch import optim
-from torchvision.utils import save_image
-import torch.distributed as dist
-from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
-
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
+from torch.utils.tensorboard import SummaryWriter
+import torch.distributed as dist
+import os
+from torch import multiprocessing as mp
 
 class SoftDiceLoss(nn.Module):
     def __init__(self, n_classes=25, weight=None, size_average=True):
@@ -80,69 +76,73 @@ class SegmentationLosses(nn.Module):
         return focal_loss+dice_loss
 
 class Train:
-    def __init__(self, img_dir, weights_dir, result_path,local_rank):
-        # 初始化
+    def __init__(self, rank, world_size,img_dir,weights_dir):
         self.summaryWriter = SummaryWriter("logs")
-        self.result_path = result_path
-        dist.init_process_group(backend="nccl" if dist.is_nccl_available() else "gloo")#初始化DDP
-        self.local_rank = local_rank
-        torch.cuda.set_device(self.local_rank)
-        self.device = torch.device("cuda", local_rank)
+        self.rank = rank
+        self.world_size = world_size
+        self.device = torch.device(f"cuda:{rank}")
+        self.batch_size = 2
+        self.lr = 0.002
+        self.num_epochs = 10000000
 
-        # 加载训练数据
-        self.dataset = Mydataset(img_dir)
-        self.sampler=DistributedSampler(self.dataset)
-        # self.dataloader = DataLoader(self.dataset, 4, sampler=self.sampler)
-        self.dataloader = DataLoader(self.dataset, 4, True, drop_last=True, num_workers=1,sampler=self.sampler)
+        # 初始化分布式训练
+        dist.init_process_group(
+            backend="nccl",
+            init_method="tcp://127.0.0.1:12345",
+            rank=rank,
+            world_size=world_size
+        )
 
-        # 加载模型
-        self.net = U2NET().to(self.device)
+        # 加载数据
+        train_dataset = Mydataset(img_dir)
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+        self.train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0, pin_memory=True, sampler=train_sampler)
 
-        # 加载预训练权重
+        # 初始化模型和优化器
+        self.model = U2NET().to(self.device)
+
         self.weights_dir = weights_dir
         if dist.get_rank() == 0:
             if os.path.exists(os.path.join(self.weights_dir, "last.pt")):
-                self.net.load_state_dict(torch.load(os.path.join(self.weights_dir, "last.pt")))
+                self.model.load_state_dict(torch.load(os.path.join(self.weights_dir, "last.pt")))
 
-        # 转DDP模型
-        self.model=DDP(self.net,device_ids=[self.local_rank], output_device=self.local_rank)
+        self.model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.model)
+        self.model = DDP(self.model, device_ids=[self.rank],find_unused_parameters=True, bucket_cap_mb=25)
+        self.criterion = SegmentationLosses(criterion_weight=torch.Tensor([0.035225969, 0.072890643, 0.389344428])).to(self.device)
+        self.optimizer = optim.NAdam(self.model.parameters(), lr=self.lr)
 
-        # 优化算法
-        self.opt = optim.Adam(self.net.parameters())
-
-        # 损失函数
-        self.loss_function = SegmentationLosses(criterion_weight=torch.Tensor([0.035225969, 0.072890643, 0.389344428])).to(self.device)
-
-    def __call__(self):
-        epoch=0
-        while True:
-            for i,(xs,ys) in enumerate(self.dataloader):
+    def train(self):
+        for epoch in range(self.num_epochs):
+            self.train_loader.sampler.set_epoch(epoch)
+            for i, (data, target) in enumerate(self.train_loader):
                 self.model.train()
-                self.dataloader.sampler.set_epoch(epoch)
+                data, target = data.to(self.device), target.to(self.device)
 
-                xs,ys=xs.to(self.device),ys.long().to(self.device)
-                d0,d1,d2,d3,d4,d5,d6=self.model(xs)
-                loss0=self.loss_function(d0,ys)
-                loss1=self.loss_function(d1,ys)
-                loss2=self.loss_function(d2,ys)
-                loss3=self.loss_function(d3,ys)
-                loss4=self.loss_function(d4,ys)
-                loss5=self.loss_function(d5,ys)
-                loss6=self.loss_function(d6,ys)
-
-                loss=loss0+loss1+loss2+loss3+loss4+loss5+loss6
-                self.opt.zero_grad()
+                self.optimizer.zero_grad()
+                d0,d1,d2,d3,d4,d5,d6 = self.model(data)
+                loss0 = self.criterion(d0, target)
+                loss1 = self.criterion(d1, target)
+                loss2 = self.criterion(d2, target)
+                loss3 = self.criterion(d3, target)
+                loss4 = self.criterion(d4, target)
+                loss5 = self.criterion(d5, target)
+                loss6 = self.criterion(d6, target)
+                loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
                 loss.backward()
-                self.opt.step()
-                print(loss)
-                if epoch%2==0:
-                    self.summaryWriter.add_scalars("loss", {"train_loss": loss}, i)
-
-            epoch+=1
+                self.optimizer.step()
+                if i % 10 == 0:
+                    print("Rank %d, Epoch %d, Batch %d, Loss %.4f" % (self.rank, epoch, i, loss.item()))
+                    self.summaryWriter.add_scalars("loss", {"train_loss": loss}, epoch)
             if epoch%10==0 and dist.get_rank() == 0:
                 torch.save(self.model.module.state_dict(), f"{self.weights_dir}/{epoch}.pt")
+        torch.cuda.empty_cache()
 
+def run(rank, world_size):
+    train = Train(rank,world_size,"data","weights")
+    train.train()
 
-if __name__ == '__main__':
-    train = Train("data","weights","result","0,1")
-    train()
+if __name__ == "__main__":
+    num_gpus = 4
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = "12345"
+    mp.spawn(run, args=(num_gpus,), nprocs=num_gpus, join=True)

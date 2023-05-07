@@ -31,7 +31,7 @@ class Mydataset(Dataset):
         new_oriimg =cv2.copyMakeBorder(new_oriimg,0,512-new_h,0,512-new_w,cv2.BORDER_CONSTANT,value=0)
         new_segimg =cv2.copyMakeBorder(new_segimg,0,512-new_h,0,512-new_w,cv2.BORDER_CONSTANT,value=0)
 
-        new_oriimg =cv2.cvtColor(new_oriimg,cv2.COLOR_BGR2RGB).transpose(2,0,1)
+        new_oriimg =cv2.cvtColor(new_oriimg,cv2.COLOR_BGR2RGB).transpose(2,0,1)/255-0.5
         new_segimg =new_segimg
 
         return torch.Tensor(new_oriimg),torch.Tensor(new_segimg)
