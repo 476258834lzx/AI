@@ -93,9 +93,10 @@ class Train:
             train_account = len(self.train_dataloader)
             val_account = len(self.val_dataloader)
             #训练
+            self.net.train()
             for target_13,target_26,target_52,img_data in self.train_dataloader:
                 target_13, target_26, target_52, img_data=target_13.to(DEVICE),target_26.to(DEVICE),target_52.to(DEVICE),img_data.to(DEVICE)
-                self.net.train()
+
                 output_13, output_26, output_52 = self.net(img_data)
                 loss_13 = loss_fun(output_13, target_13)
                 loss_26 = loss_fun(output_26, target_26)
@@ -108,9 +109,10 @@ class Train:
                 self.opt.step()
                 sum_train_loss += train_loss.detach().cpu().item()
             #测试
+            self.net.eval()
             for target_13,target_26,target_52,img_data in self.val_dataloader:
                 target_13, target_26, target_52, img_data=target_13.to(DEVICE),target_26.to(DEVICE),target_52.to(DEVICE),img_data.to(DEVICE)
-                self.net.eval()
+
                 output_13, output_26, output_52 = self.net(img_data)
                 loss_13 = loss_fun(output_13, target_13)
                 loss_26 = loss_fun(output_26, target_26)

@@ -114,9 +114,11 @@ class Train:
     def train(self):
         for epoch in range(self.num_epochs):
             self.train_loader.sampler.set_epoch(epoch)
+            sum_loss=0
+            account=len(self.train_loader)
             for i, (data, target) in enumerate(self.train_loader):
                 self.model.train()
-                data, target = data.to(self.device), target.to(self.device)
+                data, target = data.to(self.device), target.long().to(self.device)
 
                 self.optimizer.zero_grad()
                 d0,d1,d2,d3,d4,d5,d6 = self.model(data)
@@ -130,11 +132,12 @@ class Train:
                 loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
                 loss.backward()
                 self.optimizer.step()
+                sum_loss+=loss.item()
                 if i % 10 == 0:
                     print("Rank %d, Epoch %d, Batch %d, Loss %.4f" % (self.rank, epoch, i, loss.item()))
-                    self.summaryWriter.add_scalars("loss", {"train_loss": loss}, epoch)
-            if epoch%10==0 and dist.get_rank() == 0:
+            if epoch%1==0 and dist.get_rank() == 0:
                 torch.save(self.model.module.state_dict(), f"{self.weights_dir}/{epoch}.pt")
+                self.summaryWriter.add_scalars("loss", {"train_loss": sum_loss/account}, epoch)
         torch.cuda.empty_cache()
 
 def run(rank, world_size):
