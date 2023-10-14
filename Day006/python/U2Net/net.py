@@ -312,7 +312,7 @@ class U2NET(nn.Module):
         self.side5=nn.Conv2d(512,out_chl,(3,3),padding=1)
         self.side6=nn.Conv2d(512,out_chl,(3,3),padding=1)
 
-        self.outconv=nn.Conv2d(18,out_chl,(1,1))
+        self.outconv=nn.Conv2d(out_chl*6,out_chl,(1,1))
 
     def forward(self,x):
         hx1=self.stage1(x)
@@ -405,7 +405,7 @@ class U2NET_S(nn.Module):
         self.side5=nn.Conv2d(64,out_chl,(3,3),padding=1)
         self.side6=nn.Conv2d(64,out_chl,(3,3),padding=1)
 
-        self.outconv=nn.Conv2d(18,out_chl,(1,1))
+        self.outconv=nn.Conv2d(out_chl*6,out_chl,(1,1))
 
     def forward(self,x):
         hx1=self.stage1(x)
