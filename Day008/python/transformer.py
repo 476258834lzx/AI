@@ -11,6 +11,6 @@ if __name__ == '__main__':
 
 
     decoder_layer=nn.TransformerDecoderLayer(d_model=4,nhead=2)
-    tgt=torch.randn(3,10,4)
+    tgt=torch.randn(3,10,4)#反馈单元
     z=decoder_layer(tgt,x)
     print(z.shape)

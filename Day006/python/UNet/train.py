@@ -54,6 +54,7 @@ class SegFocalLoss(nn.Module):
     def forward(self, input, target):
         # target=torch.maximum(target,torch.tensor([1e-6]).long().cuda())
         logpt = -self.ce_fn(input, target)
+        logpt = torch.minimum(logpt,torch.tensor(3.5).to(DEVICE))
         pt = torch.exp(logpt)
         loss = -((1 - pt) ** self.gamma) * logpt
         loss_=loss.mean()

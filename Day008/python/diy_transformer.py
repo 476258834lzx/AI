@@ -8,7 +8,8 @@ class CBM(nn.Module):
         self._cbm=nn.Sequential(
             nn.Conv1d(input_channel, input_channel, (3,), (1,),(1,)),
             nn.BatchNorm1d(input_channel),
-            nn.Mish()
+            nn.Mish(),
+            # nn.Dropout1d()
         )
 
     def forward(self,x):

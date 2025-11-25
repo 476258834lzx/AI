@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="0f4d6f0b-b6df-432a-9cce-9f7ad232cc48" name="更改" comment="">
+      <change beforePath="$PROJECT_DIR$/../Day005/xmind/基本网络结构.xmind" beforeDir="false" afterPath="$PROJECT_DIR$/../Day005/xmind/基本网络结构.xmind" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/Stock/collect.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/Stock/data.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/Stock/detect.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/Stock/net.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/Stock/train.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/U2Net/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/../Day006/python/U2Net/train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day006/python/UNet/train.py" beforeDir="false" afterPath="$PROJECT_DIR$/../Day006/python/UNet/train.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day007/python/YOLOV3/trainer.py" beforeDir="false" afterPath="$PROJECT_DIR$/../Day007/python/YOLOV3/trainer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/python/diy_transformer.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/diy_transformer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/python/draw_lr_scheduler.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/draw_lr_scheduler.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/python/transformer.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/transformer.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Day011/xmind/大模型.xmind" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 0
+}]]></component>
+  <component name="ProjectId" id="2lswyqu994zxQcN5VuiM9PrpiU5" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "git-widget-placeholder": "master",
+    "last_opened_file_path": "D:/Relearn/Day008"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-98f27166c754-ba05f1cad1b1-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-242.21829.153" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="应用程序级" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="默认任务">
+      <changelist id="0f4d6f0b-b6df-432a-9cce-9f7ad232cc48" name="更改" comment="" />
+      <created>1725982348634</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1725982348634</updated>
+    </task>
+    <servers />
+  </component>
+</project>

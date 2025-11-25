@@ -1,4 +1,5 @@
 import torch.optim as optim
+from tensorboard.plugins.scalar.summary import scalar
 from torch.utils.data import DataLoader
 from data import Mydataset
 from net import *
@@ -7,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.distributed as dist
 import os
 from torch import multiprocessing as mp
+from torch.amp import autocast as autocast, GradScaler as GradScaler
 
 class SoftDiceLoss(nn.Module):
     def __init__(self, n_classes=25, weight=None, size_average=True):
@@ -52,6 +54,7 @@ class SegFocalLoss(nn.Module):
     def forward(self, input, target):
         # target=torch.maximum(target,torch.tensor([1e-6]).long().cuda())
         logpt = -self.ce_fn(input, target)
+        logpt = torch.minimum(logpt, torch.tensor(3.5))
         pt = torch.exp(logpt)
         loss = -((1 - pt) ** self.gamma) * logpt
         loss_=loss.mean()
@@ -84,6 +87,7 @@ class Train:
         self.batch_size = 2
         self.lr = 0.002
         self.num_epochs = 10000000
+        self.scaler = GradScaler()
 
         # 初始化分布式训练
         dist.init_process_group(
@@ -121,17 +125,19 @@ class Train:
                 data, target = data.to(self.device), target.long().to(self.device)
 
                 self.optimizer.zero_grad()
-                d0,d1,d2,d3,d4,d5,d6 = self.model(data)
-                loss0 = self.criterion(d0, target)
-                loss1 = self.criterion(d1, target)
-                loss2 = self.criterion(d2, target)
-                loss3 = self.criterion(d3, target)
-                loss4 = self.criterion(d4, target)
-                loss5 = self.criterion(d5, target)
-                loss6 = self.criterion(d6, target)
-                loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
-                loss.backward()
-                self.optimizer.step()
+                with autocast():
+                    d0,d1,d2,d3,d4,d5,d6 = self.model(data)
+                    loss0 = self.criterion(d0, target)
+                    loss1 = self.criterion(d1, target)
+                    loss2 = self.criterion(d2, target)
+                    loss3 = self.criterion(d3, target)
+                    loss4 = self.criterion(d4, target)
+                    loss5 = self.criterion(d5, target)
+                    loss6 = self.criterion(d6, target)
+                    loss = loss0 + loss1 + loss2 + loss3 + loss4 + loss5 + loss6
+                self.scaler(loss).backward()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
                 sum_loss+=loss.item()
                 if i % 10 == 0:
                     print("Rank %d, Epoch %d, Batch %d, Loss %.4f" % (self.rank, epoch, i, loss.item()))

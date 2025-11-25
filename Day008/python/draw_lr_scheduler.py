@@ -3,7 +3,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR,CosineAnnealingWarmRestar
 import torch.nn as nn
 from torchvision.models import densenet121
 import matplotlib.pyplot as plt
+import os
 
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 model=densenet121()
 optimizer=torch.optim.SGD(model.parameters(),lr=0.1)
 mode="cosineAnn"
