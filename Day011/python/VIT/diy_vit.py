@@ -1,12 +1,14 @@
 import torch
 from torch import nn
-from diy_transformerencoder import *
+from diy_transformerencoder import TransformerEncoder
 
 class VIT(nn.Module):
     def __init__(self):
-        super(VIT, self).__init__()
+        super().__init__()
+        # self._emb_layer=nn.Conv2d(1,64,14,14,bias=False)
         self._emb_layer=nn.Linear(14*14,64,bias=False)
-        self._tf_layer=TransformerEncoder(layer_nums=2,input_dim=64,hidden_dim=48,q_heads=2,kv_heads=1,max_len=4)
+
+        self._tf_layer=TransformerEncoder(num_layers=2,input_dim=64,hide_dim=48,n_q_heads=2,n_kv_heads=1,max_len=4)
         self._out_layer=nn.Linear(64,10,bias=False)
 
         _cls_token=torch.randn(64)
@@ -14,6 +16,7 @@ class VIT(nn.Module):
 
     def forward(self,input):
         n,c,h,w=input.shape
+        # _x = self._emb_layer(input).reshape(n,c,-1).permute(0,2,1)
         _x=input.reshape(n,c,2,h//2,2,w//2).permute(0,2,4,1,3,5).reshape(n,4,-1)
 
         token=self._emb_layer(_x)

@@ -1,6 +1,7 @@
 .vs/
 .idea/
 out/
+weights/
 image/
 material/
 dst/
@@ -28,6 +29,7 @@ cmake-build-release/
 *.avi
 *.data
 *.json
+*.jsonl
 *.cfg
 *.log
 *.so
