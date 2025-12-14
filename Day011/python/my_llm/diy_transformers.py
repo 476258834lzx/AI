@@ -31,7 +31,7 @@ class TransformerDecoder(nn.Module):
 
         self._out_norm = RMSNorm(input_dim)
 
-        _freq_cis = precompute_freqs_cis(hide_dim // n_q_heads, max_len)
+        _freq_cis = precompute_freqs_cis(input_dim // n_q_heads, max_len)
 
         self.register_buffer("freq_cis", _freq_cis, persistent=False)
 
@@ -99,12 +99,12 @@ class MultiHeadAttention(nn.Module):
 
         self._group = n_q_heads // n_kv_heads
 
-        self._head_size = hide_dim // self._n_q_heads
+        self._head_size = input_dim // self._n_q_heads
 
         self._qw = nn.Linear(input_dim, self._head_size * self._n_q_heads)
         self._kw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
         self._vw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
-        self._ow = nn.Linear(hide_dim, input_dim)
+        self._ow = nn.Linear(input_dim, input_dim)
 
         self._cache_max_batch_size = cache_max_batch_size
         if self._cache_max_batch_size is not None:
