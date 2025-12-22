@@ -113,7 +113,7 @@ class MultiHeadAttention(nn.Module):
                                     n_kv_heads,
                                     self._head_size,
                                     ))
-            self.register_buffer("_cache_k", _cache_k, persistent=False)
+            self.register_buffer("_cache_k", _cache_k, persistent=False)#不保存到模型文件中
 
             _cache_v = torch.zeros((cache_max_batch_size,
                                     cache_max_seq_len,
