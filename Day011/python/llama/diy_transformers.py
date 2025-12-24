@@ -107,7 +107,7 @@ class MultiHeadAttention(nn.Module):
         self._ow = nn.Linear(input_dim, input_dim)
 
         self._cache_max_batch_size = cache_max_batch_size
-        if self._cache_max_batch_size is not None:
+        if self._cache_max_batch_size is not None:#只有推理模式下会设置最大kv缓存长度和最大kv缓存批次大小,推理模式启用kvcache
             _cache_k = torch.zeros((cache_max_batch_size,
                                     cache_max_seq_len,
                                     n_kv_heads,
@@ -163,7 +163,7 @@ class MultiHeadAttention(nn.Module):
         # _o = _score@_v
         # print(_q.shape, _k.shape, _v.shape)
 
-        if start_pos == 0:
+        if start_pos == 0:#kvcache是在推理时使用的,因果矩阵是在训练时使用的,所以在start_pos不为0时关闭因果矩阵
             _o = F.scaled_dot_product_attention(
                 _q, _k, _v, attn_mask=None, is_causal=True)
         else:
@@ -242,7 +242,7 @@ class SkyerModel(PreTrainedModel):
             cache_max_seq_len=config.cache_max_seq_len,
         )
 
-    def _forward(self, input_ids, start_pos):
+    def _forward(self, input_ids, start_pos):#为KvCache缓存队列的下一个token在一个批次的S序列的起始位置
         _tokens = self._emb(input_ids)
         _features = self._tf_layer(_tokens, start_pos)
         _outputs = _features @ self._emb.weight.T
