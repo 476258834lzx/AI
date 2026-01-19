@@ -108,7 +108,7 @@ class MultiHeadAttention(nn.Module):
 
         self._cache_max_batch_size = cache_max_batch_size
         if self._cache_max_batch_size is not None:#只有推理模式下会设置最大kv缓存长度和最大kv缓存批次大小,推理模式启用kvcache
-            _cache_k = torch.zeros((cache_max_batch_size,
+            _cache_k = torch.zeros((cache_max_batch_size,#cuda代码需提前申请显存,此处提前申请显存区域
                                     cache_max_seq_len,
                                     n_kv_heads,
                                     self._head_size,

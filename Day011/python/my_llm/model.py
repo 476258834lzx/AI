@@ -17,7 +17,7 @@ class Storier(nn.Module):
 
         token=self.emb(ids)
         feature=self.tf_layer(token,start_pos)
-        return feature @ self.emb.weight.T
+        return feature @ self.emb.weight.T#不加softmax,与自身embedding做损失,不是求最大的索引项
         # return self.output_layer(feature)
 
     def forward(self, ids, start_pos):
@@ -29,7 +29,7 @@ class Storier(nn.Module):
 
 
 if __name__ == '__main__':
-    storier=Storier()
+    storier=Storier(num_layers=2,input_dim=128,hide_dim=96,n_q_heads=2,n_kv_heads=1,max_len=1024,num_vocs=50000,cache_max_batch_size=None,cache_max_seq_len=None)
     x = torch.randint(0, 100, size=(3, 8))
     print(x)
     print(storier(x,0).shape)

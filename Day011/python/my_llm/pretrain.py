@@ -26,7 +26,7 @@ class Trainer:
         if rank==0:
             self.log=SummaryWriter("runs")
 
-        self.model=Storier()
+        self.model=Storier(num_layers=2,input_dim=128,hide_dim=96,n_q_heads=2,n_kv_heads=1,max_len=1024,num_vocs=50000,cache_max_batch_size=None,cache_max_seq_len=None)
         self.engine,self.opt,self.training_dataloader,self.lr_scheduler=deepspeed.initialize(
             args=self.args,
             model=self.model,
@@ -43,32 +43,33 @@ class Trainer:
         self.engine.train()
         # deepspeed加载检查点的模型权重，默认加载最新权重
         # 如果想指定某一套权重，加 tag 参数
-        _,client_sd=self.engine.load_checkpoint("weigths")#TODO 加载的模型地址
-        if client_sd is None:client_sd={"step:",0}
+        _,client_sd=self.engine.load_checkpoint("weigths",tag=self.args.ss)#TODO 加载的模型地址,不加tag默认加载最新模型
+        if client_sd is None:client_sd={"step":0}
 
-        for i,ds in enumerate(self.training_dataloader):
-            ds=ds.to(device=self.engine.device,dtype=torch.long)
-            xs=ds[:,:-1]#因果推理，模型输入，从第一个字符推后面所有字符
-            ys=ds[:,1:]#模型输出
-            os=self.engine(xs)
+        for _ in range(10000):
+            for i,ds in enumerate(self.training_dataloader):
+                ds=ds.to(device=self.engine.device,dtype=torch.long)
+                xs=ds[:,:-1]#因果推理，模型输入，从第一个字符推后面所有字符
+                ys=ds[:,1:]#模型输出
+                os=self.engine(xs)
 
-            os=os.reshape(-1,50000)#NSV
-            os=os-os.mean(-1,keepdims=True)
+                os=os.reshape(-1,50000)#NSV
+                os=os-os.mean(-1,keepdims=True)
 
-            ys=ys.reshape(-1)
-            loss=self.loss_fn(os,ys)#自带onehot
+                ys=ys.reshape(-1)#NS
+                loss=self.loss_fn(os,ys)#自带onehot
 
-            self.engine.backward(loss)
-            self.engine.step()
+                self.engine.backward(loss)
+                self.engine.step()
 
-            step=client_sd["step"]
-            if rank==0:
-                if i%100==0:
-                    self.log.add_scalar("loss",loss.item(),step)
-            client_sd["step"]+=1
+                step=client_sd["step"]
+                if rank==0:
+                    if i%100==0:
+                        self.log.add_scalar("loss",loss.item(),step)
+                client_sd["step"]+=1
 
         save_tag=self.args.ss
-        self.engine.save_checkpoint("weigths",tag=f"{save_tag}",client_state={"step":client_sd['step']})#TODO 保存模型的地址
+        self.engine.save_checkpoint("weigths",tag=f"storier_{save_tag}",client_state={"step":client_sd['step']})#TODO 保存模型的地址,client_sd用以画tensorboard
 
 if __name__ == '__main__':
     train=Trainer()
