@@ -51,7 +51,7 @@ class Trainer:
                 ds=ds.to(device=self.engine.device,dtype=torch.long)
                 xs=ds[:,:-1]#因果推理，模型输入，从第一个字符推后面所有字符
                 ys=ds[:,1:]#模型输出
-                os=self.engine(xs)
+                os=self.engine(xs,0)
 
                 os=os.reshape(-1,50000)#NSV
                 os=os-os.mean(-1,keepdims=True)

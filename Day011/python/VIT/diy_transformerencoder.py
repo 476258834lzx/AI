@@ -198,7 +198,7 @@ class GQAAttention(nn.Module):#GQA版本，
         self._qw = nn.Linear(input_dim,self._head_size*self._q_heads)
         self._kw = nn.Linear(input_dim,self._head_size*self._kv_heads)
         self._vw = nn.Linear(input_dim,self._head_size*self._kv_heads)
-        self._ow = nn.Linear(input_dim,input_dim)
+        self._ow = nn.Linear(self._head_size * self._n_q_heads,input_dim)
 
         # _causul = torch.ones(_s, _s)
         # _causul = torch.triu(_causul, diagonal=1)
@@ -276,7 +276,8 @@ class RMSNorm(nn.Module):
         self.eps=eps
 
     def forward(self,input):
-        return self._w * input/(torch.norm(input, p=2)+self.eps)
+        # return self._w * input/(torch.norm(input, p=2)+self.eps)#输入为0向量时,L2范数为0,在显卡上触发除0bug
+        return self._w * input * torch.rsqrt(input.pow(2).mean(dim=-1, keepdim=True) + self.eps)
 
 if __name__ == '__main__':
     bn = 5000

@@ -104,7 +104,7 @@ class MultiHeadAttention(nn.Module):
         self._qw = nn.Linear(input_dim, self._head_size * self._n_q_heads)
         self._kw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
         self._vw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
-        self._ow = nn.Linear(input_dim, input_dim)
+        self._ow = nn.Linear(self._head_size * self._n_q_heads, input_dim)
 
         self._cache_max_batch_size = cache_max_batch_size
         if self._cache_max_batch_size is not None:
@@ -193,8 +193,8 @@ class RMSNorm(nn.Module):
         self.eps=eps
 
     def forward(self,input):
-        return self._w * input/(torch.norm(input, p=2)+self.eps)
-
+        # return self._w * input/(torch.norm(input, p=2)+self.eps)#输入为0向量时,L2范数为0,在显卡上触发除0bug
+        return self._w * input * torch.rsqrt(input.pow(2).mean(dim=-1, keepdim=True) + self.eps)
 
 class SkyerConfig(PretrainedConfig):
     model_type = "skyer"  # 自定义模型类型

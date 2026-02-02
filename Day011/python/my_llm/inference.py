@@ -13,18 +13,18 @@ class Inference:
         self._topk = topk
         self._temp = temp
 
-        self._skyer = Storier(num_layers=48,
-                            input_dim=768,
-                            hide_dim=3072,
+        self._skyer = Storier(num_layers=2,
+                            input_dim=128,
+                            hide_dim=96,
                             n_q_heads=12,
                             n_kv_heads=2,
                             max_len=16384,
-                            num_vocs=30000,
+                            num_vocs=50000,
                             cache_max_batch_size=1,
                             cache_max_seq_len=1024).cuda()
         self._skyer.eval()
-        self._skyer.load_state_dict(torch.load(
-            "/root/workspace/myllm/mp_rank_00_model_states.pt")["module"])
+        # self._skyer.load_state_dict(torch.load(
+        #     "/root/workspace/myllm/mp_rank_00_model_states.pt")["module"])
 
         self._spm = spm.SentencePieceProcessor()
         self._spm.Load("tokenizer.model")
