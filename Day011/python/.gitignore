@@ -28,7 +28,7 @@ cmake-build-release/
 *.MOV
 *.avi
 *.data
-*.json
+ruozhiba_qa.json
 *.jsonl
 *.cfg
 *.log

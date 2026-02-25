@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch.nn import init
 from diy_transformers import TransformerDecoder
 
 class Storier(nn.Module):
@@ -11,6 +12,17 @@ class Storier(nn.Module):
 
         # self.output_layer=nn.Linear(input_dim,num_vocs,bias=False)
         # self.output_layer.weight=self.emb.weight
+        self.apply(self._init_weight)
+
+    def _init_weight(self, m):
+        if isinstance(m, nn.Linear):
+            init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                init.zeros_(m.bias)
+            # m.reset_parameters()
+        elif isinstance(m, nn.Embedding):
+            init.xavier_uniform_(m.weight)
+            # m.reset_parameters()
 
     def _forward(self,ids,start_pos):
         assert ids is not None and len(ids) > 0

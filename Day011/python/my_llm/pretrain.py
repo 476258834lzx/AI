@@ -26,7 +26,7 @@ class Trainer:
         if rank==0:
             self.log=SummaryWriter("runs")
 
-        self.model=Storier(num_layers=2,input_dim=128,hide_dim=96,n_q_heads=2,n_kv_heads=1,max_len=1024,num_vocs=50000,cache_max_batch_size=None,cache_max_seq_len=None)
+        self.model=Storier(num_layers=48,input_dim=768,hide_dim=3072,n_q_heads=12,n_kv_heads=2,max_len=16384,num_vocs=50000,cache_max_batch_size=None,cache_max_seq_len=None)
         self.engine,self.opt,self.training_dataloader,self.lr_scheduler=deepspeed.initialize(
             args=self.args,
             model=self.model,
