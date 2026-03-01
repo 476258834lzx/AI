@@ -156,7 +156,7 @@ class MultiHeadAttention(nn.Module):
         self._qw = nn.Linear(input_dim, self._head_size * self._n_q_heads)
         self._kw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
         self._vw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
-        self._ow = nn.Linear(input_dim, input_dim)
+        self._ow = nn.Linear(self._head_size * self._n_q_heads, input_dim)
 
     def forward(self, x, freq_cis):
         _bn, _seq, _ = x.shape

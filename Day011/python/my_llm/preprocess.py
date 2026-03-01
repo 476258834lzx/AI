@@ -1,6 +1,7 @@
 import os
 import json
 import torch
+from tqdm import tqdm
 import sentencepiece as spm
 
 class Preprocessor:
@@ -24,4 +25,9 @@ class Preprocessor:
 
 if __name__ == '__main__':
     preprocessor = Preprocessor("data")
-    preprocessor("2022-05_zh_middle_0010.jsonl")
+
+    sky_path="OpenDataLab___SkyPile-150B/raw/data"
+    for file in tqdm(os.listdir(sky_path)):
+        print(file)
+        preprocessor(os.path.join(sky_path, file))
+        os.remove(os.path.join(sky_path,file))
