@@ -2,7 +2,7 @@ import argparse
 import deepspeed
 from torch.utils.tensorboard import SummaryWriter
 
-from dataset import MyDataset
+from dataset import PretrainDataset
 from model import *
 from torch import nn
 import sys
@@ -33,7 +33,7 @@ class Trainer:
         self.engine,self.opt,self.training_dataloader,self.lr_scheduler=deepspeed.initialize(
             args=self.args,
             model=self.model,
-            training_data=MyDataset(f"{self.args.data_file}",self.args.paragraphsize),
+            training_data=PretrainDataset(f"{self.args.data_file}",self.args.paragraphsize),
             model_parameters=self.model.parameters(),
             config="./deepspeed_config.json",
         )

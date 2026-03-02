@@ -6,7 +6,7 @@ import sentencepiece as spm
 import multiprocessing as mp
 
 
-class Preprocessor:
+class SkyPilePreprocessor:
     def __init__(self, filepath):
         self.spm = spm.SentencePieceProcessor()
         self.spm.Load("tokenizer.model")
@@ -26,7 +26,9 @@ class Preprocessor:
                 try:
                     txt = json.loads(line)
                     ids = self.spm.Encode(txt["text"])
+                    vocs.append(2)
                     vocs.extend(ids)
+                    vocs.append(3)
                 except json.JSONDecodeError:
                     continue
 
@@ -57,7 +59,7 @@ if __name__ == '__main__':
     # 确保多进程启动方式兼容性
     mp.set_start_method('spawn', force=True)
 
-    preprocessor = Preprocessor("data")
+    preprocessor = SkyPilePreprocessor("data")
     sky_path = "OpenDataLab___SkyPile-150B/raw/data"
     files = [os.path.join(sky_path, f) for f in os.listdir(sky_path)]
 
