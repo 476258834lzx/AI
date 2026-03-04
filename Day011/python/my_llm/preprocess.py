@@ -41,8 +41,8 @@ class SftPreprocessor:
                 user = obj["instruction"]
                 assistant = obj["output"]
 
-                input = f"<|im_start|>system\n以下的问题用中文回答。<|im_end|><|im_start|>user\n{user}<|im_end|><|im_start|>assistant\n"
-                output = f"{assistant}<|im_end|>"
+                input = f"<s>system\n以下的问题用中文回答。</s><s>user\n{user}</s><s>assistant\n"
+                output = f"{assistant}</s>"
 
                 input_ids = self.spm.Encode(input)
                 output_ids = self.spm.Encode(output)
