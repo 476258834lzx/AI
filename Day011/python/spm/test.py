@@ -13,4 +13,5 @@ print(pieces)
 # ids = spm.Encode("毛泽东",out_type=int)
 ids = spm.encode_as_ids("毛泽东")
 print(ids)
+print(spm.Encode("<s>大漠孤烟直</s><s>长河落日圆</s>",out_type=str))
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-folder="datas"
+folder="sft_datas"
 files=($(ls "$folder"))
 num_files=${#files[@]}
 

@@ -57,10 +57,13 @@ class SftPreprocessor:
 
 
 if __name__ == '__main__':
-    preprocessor = SkyPilePreprocessor("data")
+    # preprocessor = SkyPilePreprocessor("data")
+    #
+    # sky_path="OpenDataLab___SkyPile-150B/raw/data"
+    # for file in tqdm(os.listdir(sky_path)):
+    #     print(file)
+    #     preprocessor(os.path.join(sky_path, file))
+    #     os.remove(os.path.join(sky_path,file))
 
-    sky_path="OpenDataLab___SkyPile-150B/raw/data"
-    for file in tqdm(os.listdir(sky_path)):
-        print(file)
-        preprocessor(os.path.join(sky_path, file))
-        os.remove(os.path.join(sky_path,file))
+    preprocessor = SftPreprocessor("data")
+    preprocessor("ruozhiba_qa.json")

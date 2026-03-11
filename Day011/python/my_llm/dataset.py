@@ -13,7 +13,7 @@ class PretrainDataset(Dataset):
         return self.ids[idx]
 
 class SftDataset(Dataset):
-    def __init__(self, file_path, max_seq_len):
+    def __init__(self, file_path, max_seq_len):#prompt的最大长度
         self.max_seq_len = max_seq_len
 
         with open(file_path, "rb") as fr:
@@ -39,6 +39,11 @@ class SftDataset(Dataset):
                 torch.tensor(tag, dtype=torch.long))
 
 if __name__ == '__main__':
-    dataset = PretrainDataset('./data/2022-05_zh_middle_0010', paragraph_size=15)
-    item=dataset[0]
-    print(item)
+    # dataset = PretrainDataset('./data/2022-05_zh_middle_0010', paragraph_size=15)
+    # item=dataset[0]
+    # print(item)
+
+    dataset=SftDataset('./data/ruozhiba_qa.bin', max_seq_len=55)
+    prompt , tag = dataset[0]
+    print(prompt)
+    print(tag)

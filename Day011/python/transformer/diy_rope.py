@@ -15,7 +15,8 @@ def apply_rotary_emb(xq,freqs_cis):#将词向量叠加位置向量,点乘,向量
     return xq_out.type_as(xq)
 
 def reshape_for_broadcast(freqs_cis,x):#形状匹配
-    return freqs_cis[:x.shape[-2]].unsqueeze(0).unsqueeze(0)
+    freqs_cises = freqs_cis[:x.shape[1]]
+    return freqs_cises[None, :, None]
 
 if __name__ == '__main__':
     freqs_cis=precompute_freqs_cis(32,20,device="cuda:0")
