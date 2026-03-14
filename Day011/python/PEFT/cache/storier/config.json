@@ -1,0 +1,50 @@
+{
+  "return_dict": true,
+  "output_hidden_states": false,
+  "dtype": "float32",
+  "tie_word_embeddings": true,
+  "chunk_size_feed_forward": 0,
+  "is_encoder_decoder": false,
+  "is_decoder": false,
+  "cross_attention_hidden_size": null,
+  "add_cross_attention": false,
+  "tie_encoder_decoder": false,
+  "architectures": [
+    "StorierModel"
+  ],
+  "finetuning_task": null,
+  "id2label": {
+    "0": "LABEL_0",
+    "1": "LABEL_1"
+  },
+  "label2id": {
+    "LABEL_0": 0,
+    "LABEL_1": 1
+  },
+  "task_specific_params": null,
+  "problem_type": null,
+  "tokenizer_class": null,
+  "prefix": null,
+  "bos_token_id": 2,
+  "pad_token_id": 0,
+  "eos_token_id": 3,
+  "sep_token_id": null,
+  "decoder_start_token_id": null,
+  "_name_or_path": "",
+  "transformers_version": "5.0.0.dev0",
+  "num_layers": 48,
+  "input_dim": 768,
+  "hide_dim": 3072,
+  "n_q_heads": 12,
+  "n_kv_heads": 2,
+  "max_pos_len": 16384,
+  "vocab_size": 50000,
+  "cache_max_batch_size": 1,
+  "cache_max_seq_len": 1024,
+  "auto_map": {
+    "AutoModelForCausalLM": "model.StorierModel",
+    "AutoConfig": "model.StorierConfig"
+  },
+  "model_type": "storier",
+  "output_attentions": false
+}

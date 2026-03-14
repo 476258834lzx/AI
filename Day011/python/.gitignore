@@ -38,3 +38,6 @@ ruozhiba_qa.json
 *.model
 *.vocab
 *.txt
+*.pt
+*.safetensors
+*.model

@@ -40,28 +40,28 @@ class SentencePieceTokenizer(PreTrainedTokenizer):
     def vocab_size(self):
         return len(self.vocab)
 
-    def build_inputs_with_special_tokens(
-            self,
-            token_ids_0: list[int],
-            token_ids_1: list[int] | None = None
-    ) -> list[int]:
-        """
-        添加特殊 token 到输入序列
-        - 单句: [BOS] + token_ids_0 + [EOS]
-        - 双句: [BOS] + token_ids_0 + [EOS] + token_ids_1 + [EOS]
-        """
-        if token_ids_1 is None:
-            # 单句情况
-            return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
-        else:
-            # 双句情况（如问答、句子对）
-            return (
-                    [self.bos_token_id] +
-                    token_ids_0 +
-                    [self.eos_token_id] +
-                    token_ids_1 +
-                    [self.eos_token_id]
-            )
+    # def build_inputs_with_special_tokens(
+    #         self,
+    #         token_ids_0: list[int],
+    #         token_ids_1: list[int] | None = None
+    # ) -> list[int]:
+    #     """
+    #     添加特殊 token 到输入序列
+    #     - 单句: [BOS] + token_ids_0 + [EOS]
+    #     - 双句: [BOS] + token_ids_0 + [EOS] + token_ids_1 + [EOS]
+    #     """
+    #     if token_ids_1 is None:
+    #         # 单句情况
+    #         return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
+    #     else:
+    #         # 双句情况（如问答、句子对）
+    #         return (
+    #                 [self.bos_token_id] +
+    #                 token_ids_0 +
+    #                 [self.eos_token_id] +
+    #                 token_ids_1 +
+    #                 [self.eos_token_id]
+    #         )
 
     def _tokenize(self, text):
         """
