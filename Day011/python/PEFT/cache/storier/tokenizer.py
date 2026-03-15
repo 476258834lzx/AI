@@ -40,28 +40,39 @@ class SentencePieceTokenizer(PreTrainedTokenizer):
     def vocab_size(self):
         return len(self.vocab)
 
-    # def build_inputs_with_special_tokens(
-    #         self,
-    #         token_ids_0: list[int],
-    #         token_ids_1: list[int] | None = None
-    # ) -> list[int]:
-    #     """
-    #     添加特殊 token 到输入序列
-    #     - 单句: [BOS] + token_ids_0 + [EOS]
-    #     - 双句: [BOS] + token_ids_0 + [EOS] + token_ids_1 + [EOS]
-    #     """
-    #     if token_ids_1 is None:
-    #         # 单句情况
-    #         return [self.bos_token_id] + token_ids_0 + [self.eos_token_id]
-    #     else:
-    #         # 双句情况（如问答、句子对）
-    #         return (
-    #                 [self.bos_token_id] +
-    #                 token_ids_0 +
-    #                 [self.eos_token_id] +
-    #                 token_ids_1 +
-    #                 [self.eos_token_id]
-    #         )
+    def build_inputs_with_special_tokens(
+            self,
+            token_ids_0: list[int],
+            token_ids_1: list[int] | None = None
+    ) -> list[int]:
+        """
+        智能添加特殊 token
+        单句: <s> ... </s>
+        双句: <s> ... </s><s> ... </s>
+        """
+
+        def add_specials(tokens, force_bos=True, force_eos=True):
+            """根据条件添加BOS/EOS"""
+            if not tokens:
+                return [self.bos_token_id, self.eos_token_id] if force_bos else [self.eos_token_id]
+
+            if force_bos and tokens[0] != self.bos_token_id:
+                tokens = [self.bos_token_id] + tokens
+            if force_eos and tokens[-1] != self.eos_token_id:
+                tokens = tokens + [self.eos_token_id]
+            return tokens
+
+        if token_ids_1 is None:
+            # 单句：确保 <s> ... </s>
+            return add_specials(token_ids_0)
+
+        else:
+            # 双句：确保 <s>句1</s><s>句2</s>
+            # 第一句必须有BOS和EOS
+            first = add_specials(token_ids_0, force_bos=True, force_eos=True)
+            # 第二句必须有BOS和EOS（用于明确标记句子边界）
+            second = add_specials(token_ids_1, force_bos=True, force_eos=True)
+            return first + second
 
     def _tokenize(self, text):
         """

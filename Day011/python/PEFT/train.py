@@ -11,11 +11,11 @@ from datasets import load_dataset
 _model_path = "./cache/storier"
 # _model_path = "/root/workspace/modelscope/cache/qwen/Qwen2___5-0___5B-Instruct"
 _tokenizer = AutoTokenizer.from_pretrained(_model_path, trust_remote_code=True)
-# _config = AutoConfig.from_pretrained(_model_path, trust_remote_code=True)
-# _config.cache_max_batch_size = None
-# _model = AutoModelForCausalLM.from_pretrained(_model_path,
-#                                               config=_config,
-#                                               trust_remote_code=True)
+_config = AutoConfig.from_pretrained(_model_path, trust_remote_code=True)
+_config.cache_max_batch_size = None
+_model = AutoModelForCausalLM.from_pretrained(_model_path,
+                                              config=_config,
+                                              trust_remote_code=True)
 
 # import torch
 # a =  torch.tensor([2,  1084, 25164,  1746,  1851, 25220,  7042,  5513, 25189,     3,
