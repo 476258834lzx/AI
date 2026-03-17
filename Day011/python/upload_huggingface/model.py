@@ -230,7 +230,7 @@ class StorierConfig(PretrainedConfig):
         self.max_pos_len = kwargs.get("max_pos_len")
         self.vocab_size = kwargs.get("vocab_size")
         self.cache_max_batch_size = kwargs.get("cache_max_batch_size")
-        self.cache_max_seq_len = kwargs.get("cache_max_seq_len")
+        self.cache_max_seq_len = kwargs.get("cache_max_seq_len")#温度系数也在这获取解析
 
         self.pad_token_id = 0
         self.bos_token_id = 2
