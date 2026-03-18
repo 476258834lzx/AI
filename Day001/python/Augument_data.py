@@ -5,6 +5,7 @@ import glob
 import cv2
 import shutil
 import numpy as np
+from numpy import linalg as LA
 from PIL import Image,ImageFilter
 
 def check_pix_num(img,h,w):
@@ -493,6 +494,24 @@ def fourier_transformation(img_path,label_path,dst_folder,frequency):
     fourier_transformation_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
     os.rename(fourier_transformation_labelname, fourier_transformation_labelname[:-4] + f"-{state}.txt")
     return dst_folder
+
+def svd_filter(img_path,label_path,dst_folder):
+    state = "svd_filter"
+    aug_img_path,aug_label_path=check_path(dst_folder,state)
+    img = cv2.imread(img_path)
+    U, s, VT = LA.svd(img)
+    Sigma = np.zeros((img.shape[0], img.shape[1]))
+    Sigma[:min(img.shape[0], img.shape[1]), :min(img.shape[0], img.shape[1])] = np.diag(s)
+
+    diffs = np.diff(s)
+    k_adaptive = np.argmax(diffs) + 1  # 找下降最慢的点
+
+    aug_img = U[:, :k_adaptive] @ Sigma[:k_adaptive, :k_adaptive] @ VT[:k_adaptive, :]
+    cv2.imwrite(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"), aug_img)
+
+    shutil.copy(label_path, aug_label_path)
+    svd_filter_labelname = os.path.join(aug_label_path, os.path.basename(label_path))
+    os.rename(svd_filter_labelname, svd_filter_labelname[:-4] + f"-{state}.txt")
 
 if __name__ == '__main__':
     material_src = r"/home/yitutong/桌面/liuzhenxing/data/yolo/material/*.png"
