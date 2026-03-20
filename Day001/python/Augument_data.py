@@ -503,8 +503,14 @@ def svd_filter(img_path,label_path,dst_folder):
     Sigma = np.zeros((img.shape[0], img.shape[1]))
     Sigma[:min(img.shape[0], img.shape[1]), :min(img.shape[0], img.shape[1])] = np.diag(s)
 
-    diffs = np.diff(s)
-    k_adaptive = np.argmax(diffs) + 1  # 找下降最慢的点
+    threshold = 0.01 * s[0]  # 设为最大奇异值的1%
+    s_filtered = s.copy()
+    s_filtered[s_filtered < threshold] = 0
+    k_adaptive = np.sum(s_filtered > 0)
+
+    #不建议用在图像上
+    # diffs = np.diff(s)
+    # k_adaptive = np.argmax(diffs) + 1  # 找下降最慢的点
 
     aug_img = U[:, :k_adaptive] @ Sigma[:k_adaptive, :k_adaptive] @ VT[:k_adaptive, :]
     cv2.imwrite(os.path.join(aug_img_path, os.path.basename(img_path)[:-4] + f"-{state}.jpg"), aug_img)
