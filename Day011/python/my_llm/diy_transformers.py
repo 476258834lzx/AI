@@ -214,6 +214,83 @@ class RMSNorm(nn.Module):
         # return self._w * input/(torch.norm(input, p=2)+self.eps)#输入为0向量时,L2范数为0,在显卡上触发除0bug
         return self._w * input * torch.rsqrt(input.pow(2).mean(dim=-1, keepdim=True) + self.eps)
 
+class LoraLinear(nn.Module):
+    def __init__(
+            self,
+            in_features: int,
+            out_features: int,
+            bias: bool = True,
+            rank: int = 8,
+            alpha: float = 1.0,
+            dropout: float = 0.0,  # 可选：增加 dropout 支持
+    ):
+        super().__init__()
+        self.rank = rank
+        self.alpha = alpha
+        self.scaling = alpha / rank
+
+        # 1. 主权重（冻结）
+        self.linear = nn.Linear(in_features, out_features, bias=bias)
+        self._freeze_module(self.linear)
+
+        # 2. LoRA 旁路
+        self.lora_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.lora_A = nn.Linear(in_features, rank, bias=False)
+        self.lora_B = nn.Linear(rank, out_features, bias=False)
+
+        # 3. Pythonic 初始化：通过 apply 递归应用
+        self.apply(self._init_weights)
+
+    def _freeze_module(self, module: nn.Module) -> None:
+        """工具方法：冻结模块参数"""
+        for param in module.parameters():
+            param.requires_grad = False
+
+    def _init_weights(self, module: nn.Module) -> None:
+        """
+        初始化回调，被 apply() 自动调用到每个子模块。
+        使用 `is` 判断确保只初始化目标矩阵，不影响其他可能嵌套的 Linear。
+        """
+        if module is self.lora_A:
+            # GPT/LLaMA 风格：正态分布，std=0.02 或 1/sqrt(rank)
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        elif module is self.lora_B:
+            # 关键：零初始化，确保训练开始时 delta_W = 0
+            nn.init.zeros_(module.weight)
+        # elif module is self.linear:
+        #     预训练权重由外部加载，此处跳过
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        # 主干 frozen，但保留在计算图中（为了合并/解合并的灵活性）
+        output = self.linear(input)
+
+        # LoRA 分支
+        if self.training and isinstance(self.lora_dropout, nn.Dropout):
+            input = self.lora_dropout(input)
+
+        lora_output = self.lora_B(self.lora_A(input)) * self.scaling
+        return output + lora_output
+
+    def merge_weights(self) -> "LoraLinear":
+        """合并 LoRA 到主权重，推理时可移除旁路计算"""
+        self.linear.weight.data += (
+                                           self.lora_B.weight.data @ self.lora_A.weight.data
+                                   ) * self.scaling
+        return self
+
+    def unmerge_weights(self) -> "LoraLinear":
+        """解合并，恢复训练状态"""
+        self.linear.weight.data -= (
+                                           self.lora_B.weight.data @ self.lora_A.weight.data
+                                   ) * self.scaling
+        return self
+
+    def get_merged_weights(self) -> torch.Tensor:
+        """获取合并后的权重（不修改原模块）"""
+        return self.linear.weight + (
+                self.lora_B.weight @ self.lora_A.weight
+        ) * self.scaling
+
 class SkyerConfig(PretrainedConfig):
     model_type = "skyer"  # 自定义模型类型
 
