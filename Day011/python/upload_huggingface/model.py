@@ -244,6 +244,7 @@ class StorierConfig(PretrainedConfig):
 
 class StorierModel(PreTrainedModel):
     config_class = StorierConfig
+    supports_gradient_checkpointing = True
     base_model_prefix = "storier"
     def __init__(self, config):
 
@@ -318,6 +319,11 @@ class StorierModel(PreTrainedModel):
             # yield _id
             _ids = torch.cat((_ids, _id), dim=-1)
         return _ids
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        """实现梯度检查点的启用/禁用"""
+        if hasattr(module, "gradient_checkpointing"):
+            module.gradient_checkpointing = value
 
     def get_input_embeddings(self):
         return self.emb

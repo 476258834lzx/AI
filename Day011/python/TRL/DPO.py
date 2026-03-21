@@ -4,7 +4,7 @@ from transformers import (AutoModelForCausalLM,
 from trl import DPOConfig, DPOTrainer
 from modelscope.msdatasets import MsDataset
 
-_model_path = "/root/workspace/skyer_huggingface/cache/skyer"
+_model_path = "/root/workspace/skyer_huggingface/cache/storier"
 
 _tokenizer = AutoTokenizer.from_pretrained(_model_path, trust_remote_code=True)
 _config = AutoConfig.from_pretrained(_model_path, trust_remote_code=True)
@@ -12,6 +12,11 @@ _config.cache_max_batch_size = None
 _model = AutoModelForCausalLM.from_pretrained(_model_path,
                                               config=_config,
                                               trust_remote_code=True)
+#新版设置参考模型
+ref_model = AutoModelForCausalLM.from_pretrained(
+    _model_path,
+    trust_remote_code=True
+)
 
 _dataset = MsDataset.load('AI-ModelScope/Chinese-dpo-pairs', split="train[:10]")
 
@@ -37,14 +42,23 @@ _training_args = DPOConfig(
     # optim="paged_adamw_32bit"
 )
 
+#新版不再接收max_prompt_length、max_length、max_target_length参数
 _trainer = DPOTrainer(
     model=_model,
-    tokenizer=_tokenizer,
+    processing_class=_tokenizer,
     args=_training_args,
     train_dataset=_dataset,
-    max_prompt_length=512,
-    max_length=1024,
-    max_target_length=1024
+    ref_model=ref_model
 )
+
+# _trainer = DPOTrainer(
+#     model=_model,
+#     processing_class=_tokenizer,
+#     args=_training_args,
+#     train_dataset=_dataset,
+#     max_prompt_length=512,
+#     max_length=1024,
+#     max_target_length=1024
+# )
 
 _trainer.train()
