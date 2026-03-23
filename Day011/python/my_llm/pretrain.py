@@ -1,4 +1,6 @@
 import argparse
+import os.path
+import json
 import deepspeed
 from torch.utils.tensorboard import SummaryWriter
 
@@ -28,6 +30,24 @@ class Trainer:
         rank=deepspeed.comm.get_rank()
         if rank==0:
             self.log=SummaryWriter("runs")
+            #根据公式修改配置文件batch,防止读过长token时的batch爆显存
+            ext=int(os.path.basename(self.args.data_file).split("_")[0])
+
+            with open("deepspeed_config.json", "r+", encoding="utf-8") as f:
+                jn=json.load(f)
+
+            accum_size=5
+            micro_size=int(32*256/ext)
+            # micro_size=int(32*round(256/ext))#数据量小时候适用
+            jn["train_micro_batch_size_per_gpu"]=micro_size
+            jn["train_batch_size"]=micro_size*8*accum_size
+            jn["gradient_accumulation_steps"]=accum_size
+
+            with open("./deepspeed_config.json","w+") as f:
+                json.dump(jn,f,indent=4,ensure_ascii=False)
+                f.write("\n")
+                f.flush()
+                f.close()
 
         self.model=Storier(num_layers=48,input_dim=768,hide_dim=3072,n_q_heads=12,n_kv_heads=2,max_len=16384,num_vocs=50000,cache_max_batch_size=None,cache_max_seq_len=None)
         self.engine,self.opt,self.training_dataloader,self.lr_scheduler=deepspeed.initialize(
