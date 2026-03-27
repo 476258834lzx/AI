@@ -5,9 +5,10 @@ import shutil
 from torch import nn
 # from Day011.python.transformer.diy_rope import *
 from torch.nn import functional as F
-from transformers import PreTrainedModel, PretrainedConfig, AutoConfig, GenerationConfig
+from transformers import PreTrainedModel, PretrainedConfig, AutoConfig, GenerationConfig,GenerationMixin
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.auto import modeling_auto
+from transformers.cache_utils import DynamicCache
 
 def precompute_freqs_cis(dim,end,theta=50000.0,device="cpu"):#生成位置向量列表,设置单位角度
     freqs = 1.0/(theta ** (torch.arange(0,dim,2,device=device)[:(dim//2)].float()/dim))#对50000按步长开方的倒数,每个向量两两一组(dim=32,32/2=16),公式中的dim可以不分两组不取步长2,dim改为16与查询向量形状匹配
@@ -34,9 +35,7 @@ class TransformerDecoder(nn.Module):
                  hide_dim,
                  n_q_heads,
                  n_kv_heads,
-                 max_len,
-                 cache_max_batch_size=None,
-                 cache_max_seq_len=None
+                 max_len
                  ):
         super().__init__()
 
@@ -44,9 +43,7 @@ class TransformerDecoder(nn.Module):
             [TransformerLayer(input_dim,
                               hide_dim,
                               n_q_heads,
-                              n_kv_heads,
-                              cache_max_batch_size,
-                              cache_max_seq_len) for _ in range(num_layers)]
+                              n_kv_heads) for _ in range(num_layers)]
         )
 
         self._out_norm = RMSNorm(input_dim)
@@ -55,11 +52,27 @@ class TransformerDecoder(nn.Module):
 
         self.register_buffer("freq_cis", _freq_cis, persistent=False)
 
-    def forward(self, x, start_pos):
-        _x = x
-        for _layer in self._layers:
-            _x = _layer(_x, self.freq_cis, start_pos)
-        return self._out_norm(_x)
+    def forward(self, x, start_pos, past_key_values=None, use_cache=False):
+        present_key_values = []
+        # 转换 past_key_values 为兼容格式
+        if past_key_values is not None:
+            if hasattr(past_key_values, 'key_cache') and hasattr(past_key_values, 'value_cache'):
+                # 如果是 DynamicCache，提取 (k, v) 列表
+                past_kv_list = [(past_key_values.key_cache[i], past_key_values.value_cache[i])
+                                for i in range(len(past_key_values.key_cache))]
+            else:
+                # 假设已经是列表格式
+                past_kv_list = past_key_values
+        else:
+            past_kv_list = None
+
+        for i, layer in enumerate(self._layers):
+            layer_past = past_kv_list[i] if past_kv_list is not None else None
+            x, present = layer(x, self.freq_cis, start_pos, layer_past, use_cache)
+            present_key_values.append(present)
+        x = self._out_norm(x)
+
+        return x, present_key_values
 
 
 class TransformerLayer(nn.Module):
@@ -67,31 +80,26 @@ class TransformerLayer(nn.Module):
                  input_dim,
                  hide_dim,
                  n_q_heads,
-                 n_kv_heads,
-                 cache_max_batch_size,
-                 cache_max_seq_len):
+                 n_kv_heads):
         super().__init__()
 
         self._att_norm = RMSNorm(input_dim)
 
         self._att_layer = MultiHeadAttention(input_dim,
-                                    hide_dim,
-                                    n_q_heads,
-                                    n_kv_heads,
-                                    cache_max_batch_size,
-                                    cache_max_seq_len)
+                                            hide_dim,
+                                            n_q_heads,
+                                            n_kv_heads)
 
         self._ffn_norm = RMSNorm(input_dim)
 
-        self._ffn_layer = FFN(input_dim,
-                              hide_dim)
+        self._ffn_layer = FFN(input_dim,hide_dim)
 
-    def forward(self, x, freq_cis, start_pos):
+    def forward(self, x, freq_cis, start_pos, past_key_value=None, use_cache=False):
         _x = x
         _x = self._att_norm(_x)
-        _x = self._att_layer(_x, freq_cis, start_pos)
+        attn_out, present_key_value = self._att_layer(_x, freq_cis, start_pos, past_key_value, use_cache)
 
-        _x = x + _x
+        _x = x + attn_out
 
         _y = _x
         _y = self._ffn_norm(_y)
@@ -99,7 +107,7 @@ class TransformerLayer(nn.Module):
 
         _y = _y + _x
 
-        return _y
+        return _y, present_key_value
 
 
 class MultiHeadAttention(nn.Module):
@@ -109,8 +117,7 @@ class MultiHeadAttention(nn.Module):
                  hide_dim,
                  n_q_heads,
                  n_kv_heads,
-                 cache_max_batch_size,
-                 cache_max_seq_len
+
                  ):
         super().__init__()
 
@@ -126,23 +133,7 @@ class MultiHeadAttention(nn.Module):
         self._vw = nn.Linear(input_dim, self._head_size * self._n_kv_heads)
         self._ow = nn.Linear(self._head_size * self._n_q_heads, input_dim)
 
-        self._cache_max_batch_size = cache_max_batch_size
-        if self._cache_max_batch_size is not None:
-            _cache_k = torch.zeros((cache_max_batch_size,
-                                    cache_max_seq_len,
-                                    n_kv_heads,
-                                    self._head_size,
-                                    ))
-            self.register_buffer("_cache_k", _cache_k, persistent=False)
-
-            _cache_v = torch.zeros((cache_max_batch_size,
-                                    cache_max_seq_len,
-                                    n_kv_heads,
-                                    self._head_size,
-                                    ))
-            self.register_buffer("_cache_v", _cache_v, persistent=False)
-
-    def forward(self, x, freq_cis, start_pos):
+    def forward(self, x, freq_cis, start_pos, past_key_value=None, use_cache=False):
         _bn, _seq, _ = x.shape
         _dk = self._head_size ** 0.5
 
@@ -155,21 +146,32 @@ class MultiHeadAttention(nn.Module):
         _q = apply_rotary_emb(_q, freq_cis[start_pos:start_pos + _seq])
         _k = apply_rotary_emb(_k, freq_cis[start_pos:start_pos + _seq])
 
-        if self._cache_max_batch_size is not None:
-            self._cache_k[:_bn, start_pos: start_pos + _seq] = _k
-            self._cache_v[:_bn, start_pos: start_pos + _seq] = _v
+        # 处理 past_key_value
+        if past_key_value is not None:
+            past_k, past_v = past_key_value
+            if past_k is not None and past_v is not None:  # 仅当两者都是有效张量时才拼接
+                _k = torch.cat([past_k, _k], dim=1)
+                _v = torch.cat([past_v, _v], dim=1)
 
-            _k = self._cache_k[:_bn, : start_pos + _seq]
-            _v = self._cache_v[:_bn, : start_pos + _seq]
+        # 如果使用缓存，则准备返回的 present_key_value
+        present_key_value = None
+        if use_cache:
+            present_key_value = (_k, _v)
 
         _q = _q.permute(0, 2, 1, 3)
         _k = _k.permute(0, 2, 1, 3)
         _v = _v.permute(0, 2, 1, 3)
 
+        #此时还得用老的代码，训练的模型形状不对
         _k = _k[:, None].repeat(1, self._group, 1, 1, 1).reshape(
             _bn, -1, start_pos + _seq, self._head_size)
         _v = _v[:, None].repeat(1, self._group, 1, 1, 1).reshape(
             _bn, -1, start_pos + _seq, self._head_size)
+        # 处理 GQA: 将 kv heads 复制到 q heads
+        # _k = _k[:, :, None].repeat(1, 1, self._group, 1, 1).reshape(
+        #     _bn, self._n_q_heads, -1, self._head_size)
+        # _v = _v[:, :, None].repeat(1, 1, self._group, 1, 1).reshape(
+        #     _bn, self._n_q_heads, -1, self._head_size)
 
         # _causul = torch.ones(_seq, _seq)
         # _causul = torch.triu(_causul, diagonal=1)
@@ -193,7 +195,8 @@ class MultiHeadAttention(nn.Module):
         _o = _o.permute(0, 2, 1, 3)
         _o = _o.reshape(_bn, _seq, -1)
 
-        return self._ow(_o)
+        output = self._ow(_o)
+        return output, present_key_value
 
 class FFN(nn.Module):
     def __init__(self,input_dim,hidden_dim):
@@ -222,6 +225,12 @@ class StorierConfig(PretrainedConfig):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        # self.num_hidden_layers = self.num_layers = kwargs.get("num_layers")  # 会将两个值都写入config.json影响阅读和配置
+        # self.hidden_size = self.input_dim = kwargs.get("input_dim")
+        # self.intermediate_size = self.hide_dim = kwargs.get("hide_dim")
+        # self.num_attention_heads = self.n_q_heads = kwargs.get("n_q_heads")
+        # self.num_key_value_heads = self.n_kv_heads = kwargs.get("n_kv_heads")
+        # self.max_position_embeddings = self.max_pos_len = kwargs.get("max_pos_len")
         self.num_layers = kwargs.get("num_layers")
         self.input_dim = kwargs.get("input_dim")
         self.hide_dim = kwargs.get("hide_dim")
@@ -229,8 +238,8 @@ class StorierConfig(PretrainedConfig):
         self.n_kv_heads = kwargs.get("n_kv_heads")
         self.max_pos_len = kwargs.get("max_pos_len")
         self.vocab_size = kwargs.get("vocab_size")
-        self.cache_max_batch_size = kwargs.get("cache_max_batch_size")
-        self.cache_max_seq_len = kwargs.get("cache_max_seq_len")#温度系数也在这获取解析
+        # 可选：是否默认使用缓存
+        self.use_cache = kwargs.get("use_cache", True)
 
         self.pad_token_id = 0
         self.bos_token_id = 2
@@ -241,17 +250,39 @@ class StorierConfig(PretrainedConfig):
             "AutoConfig": "model.StorierConfig"
         }
 
+    # 添加以下 property，将自定义字段映射为标准名称
+    @property
+    def num_hidden_layers(self):
+        return self.num_layers
 
-class StorierModel(PreTrainedModel):
+    @property
+    def hidden_size(self):
+        return self.input_dim
+
+    @property
+    def intermediate_size(self):
+        return self.hide_dim
+
+    @property
+    def num_attention_heads(self):
+        return self.n_q_heads
+
+    @property
+    def num_key_value_heads(self):
+        return self.n_kv_heads
+
+    @property
+    def max_position_embeddings(self):
+        return self.max_pos_len
+
+
+class StorierModel(PreTrainedModel,GenerationMixin):
     config_class = StorierConfig
     supports_gradient_checkpointing = True
     base_model_prefix = "storier"
     def __init__(self, config):
 
         super().__init__(config)
-
-        self.cache_max_batch_size = config.cache_max_batch_size
-
         self.emb = nn.Embedding(config.vocab_size, config.input_dim)
 
         self.tf_layer = TransformerDecoder(
@@ -260,65 +291,61 @@ class StorierModel(PreTrainedModel):
             hide_dim=config.hide_dim,
             n_q_heads=config.n_q_heads,
             n_kv_heads=config.n_kv_heads,
-            max_len=config.max_pos_len,
-            cache_max_batch_size=config.cache_max_batch_size,
-            cache_max_seq_len=config.cache_max_seq_len,
+            max_len=config.max_pos_len
         )
         self.post_init()
 
-    def _forward(self, input_ids, start_pos):
+    def forward(self, input_ids, attention_mask=None, labels=None, past_key_values=None, use_cache=None, **kwargs):
+        # 确定 use_cache 默认值
+        if use_cache is None:
+            use_cache = self.config.use_cache if hasattr(self.config, 'use_cache') else True
+
+        # 1. 转换 past_key_values 为兼容格式（列表 of (k, v)）
+        if past_key_values is not None:
+            if hasattr(past_key_values, 'key_cache'):  # 输入是 DynamicCache
+                key_cache, value_cache = past_key_values.to_legacy_cache()
+                # 处理可能存在的 None 缓存（例如首次生成时缓存为空）
+                past_kv_list = []
+                for i in range(len(key_cache)):
+                    if key_cache[i] is not None and value_cache[i] is not None:
+                        past_kv_list.append((key_cache[i], value_cache[i]))
+                    else:
+                        past_kv_list.append(None)  # 保持 None 占位
+            else:
+                # 输入已经是列表格式
+                past_kv_list = past_key_values
+        else:
+            past_kv_list = None
+
+        # 计算 start_pos
+        start_pos = 0
+        if past_key_values is not None:
+            if hasattr(past_key_values, 'get_seq_length'):
+                start_pos = past_key_values.get_seq_length()
+            elif isinstance(past_key_values, list) and past_key_values[0] is not None:
+                start_pos = past_key_values[0][0].shape[1]
+
         tokens = self.emb(input_ids)
-        features = self.tf_layer(tokens, start_pos)
-        outputs = features @ self.emb.weight.T
-        return outputs
-
-    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
-        _logits = self._forward(input_ids, 0)
-
-        _labels = labels
-        _loss = None
-        if _labels is not None:
-            _labels[_labels < 0] = self.config.pad_token_id
-            _o = _logits[:, :-1].reshape(-1, self.config.vocab_size)
-            _t = _labels[:, 1:].reshape(-1)
-
-            _loss = F.cross_entropy(_o, _t, ignore_index=self.config.pad_token_id)
+        features, present_key_values = self.tf_layer(
+            tokens, start_pos, past_kv_list, use_cache)
+        logits = features @ self.emb.weight.T
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(
+                shift_logits.view(-1, shift_logits.size(-1)),
+                shift_labels.view(-1),
+                ignore_index=self.config.pad_token_id
+            )
 
         return CausalLMOutputWithPast(
-            loss=_loss,
-            logits=_logits,
-            past_key_values=None,
+            loss=loss,
+            logits=logits,
+            past_key_values=present_key_values,
             hidden_states=None,
             attentions=None,
         )
-
-    def _generate(self, ids, start_pos, generation_config):
-        _outputs = self._forward(ids, start_pos)
-        _output = _outputs[:, -1]
-        _weight, _indices = torch.topk(
-            _output, generation_config.top_k, dim=-1)
-        _probs = self._tsoftmax(_weight, generation_config.temperature)
-        _selected_indices = torch.multinomial(_probs, 1)
-        _id = torch.gather(_indices, dim=-1, index=_selected_indices)
-        return _id
-
-    _generation_config = GenerationConfig(
-        do_sample=True,
-        temperature=0.7,
-        top_k=5
-    )
-
-    def generate(self, input_ids, generation_config=_generation_config):
-        _ids = input_ids
-        _id = self._generate(input_ids, 0, generation_config)
-
-        for _start_pos in range(_ids.shape[1], self.config.cache_max_seq_len):
-            _id = self._generate(_id, _start_pos, generation_config)
-            if _id == self.config.eos_token_id:
-                break
-            # yield _id
-            _ids = torch.cat((_ids, _id), dim=-1)
-        return _ids
 
     def _set_gradient_checkpointing(self, module, value=False):
         """实现梯度检查点的启用/禁用"""
@@ -348,8 +375,7 @@ if __name__ == '__main__':
                          n_kv_heads=2,
                          max_pos_len=16384,
                          vocab_size=50000,
-                         cache_max_batch_size=1,
-                         cache_max_seq_len=1024,
+                         use_cache=True
                          )
 
     # 创建模型

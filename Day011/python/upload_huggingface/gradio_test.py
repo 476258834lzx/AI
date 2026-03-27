@@ -56,6 +56,20 @@ generated_ids = _model.generate(
     model_inputs.input_ids,
     generation_config = _generation_config
 )
+
+print("Raw generated_ids:", generated_ids)
+print("Shape:", generated_ids.shape)
+
+# 直接解码所有生成的 token（包括输入部分）
+full_text = _tokenizer.batch_decode(generated_ids, skip_special_tokens=False)[0]
+print("Full decoded text:", full_text)
+
+# 提取新生成的 token
+new_tokens = generated_ids[0, model_inputs.input_ids.shape[1]:]
+print("New token ids:", new_tokens)
+if new_tokens.numel() == 0:
+    print("Warning: No new tokens generated!")
+
 generated_ids = [
     output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
 ]

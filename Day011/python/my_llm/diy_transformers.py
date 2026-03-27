@@ -164,10 +164,11 @@ class MultiHeadAttention(nn.Module):
         _k = _k.permute(0, 2, 1, 3)
         _v = _v.permute(0, 2, 1, 3)
 
-        _k = _k[:, None].repeat(1, self._group, 1, 1, 1).reshape(
-            _bn, -1, start_pos + _seq, self._head_size)
-        _v = _v[:, None].repeat(1, self._group, 1, 1, 1).reshape(
-            _bn, -1, start_pos + _seq, self._head_size)
+        # 处理 GQA: 将 kv heads 复制到 q heads
+        _k = _k[:, :, None].repeat(1, 1, self._group, 1, 1).reshape(
+            _bn, self._n_q_heads, -1, self._head_size)
+        _v = _v[:, :, None].repeat(1, 1, self._group, 1, 1).reshape(
+            _bn, self._n_q_heads, -1, self._head_size)
 
         # _causul = torch.ones(_seq, _seq)
         # _causul = torch.triu(_causul, diagonal=1)

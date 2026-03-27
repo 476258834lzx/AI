@@ -169,10 +169,11 @@ class MultiHeadAttention(nn.Module):
         # _causul[_causul == 1] = -torch.inf
         # _causul = _causul.to(x.device)
 
-        _k = _k[:, None].repeat(1, self._group, 1, 1, 1).reshape(
-            _bn, -1, _seq, self._head_size)
-        _v = _v[:, None].repeat(1, self._group, 1, 1, 1).reshape(
-            _bn, -1, _seq, self._head_size)
+        # 处理 GQA: 将 kv heads 复制到 q heads
+        _k = _k[:, :, None].repeat(1, 1, self._group, 1, 1).reshape(
+            _bn, self._n_q_heads, -1, self._head_size)
+        _v = _v[:, :, None].repeat(1, 1, self._group, 1, 1).reshape(
+            _bn, self._n_q_heads, -1, self._head_size)
 
         _score = _q @ _k.permute(0, 1, 3, 2) / _dk
         # _score = torch.softmax(_score + _causul, dim=-1)
