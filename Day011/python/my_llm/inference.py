@@ -25,7 +25,9 @@ class Inference:
         self._skyer.eval()
         self._skyer.load_state_dict(torch.load(
             "./weights/9/mp_rank_00_model_states.pt")["module"])
-
+        # for _k, v in self._skyer.named_parameters():
+        #     print(_k)
+        # exit()
         self._spm = spm.SentencePieceProcessor()
         self._spm.Load("tokenizer.model")
 
