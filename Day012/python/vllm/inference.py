@@ -18,7 +18,7 @@ sampling_params = SamplingParams(
 from transformers import Qwen2ForCausalLM
 
 _model_id = "/root/Workspace/airelearn/Day012/python/vllm/cache/Qwen/Qwen2___5-0___5B-Instruct"
-# _model_id = "./cache/storier_vllm"
+# _model_id = "./cache/storier"
 llm = LLM(model=_model_id,
           dtype=torch.float32,
           trust_remote_code=True)
