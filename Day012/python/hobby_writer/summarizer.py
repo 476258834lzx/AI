@@ -8,10 +8,10 @@ class Complete_written_text(BaseModel):
 
 job_introduction=r"""
 您是一位条理清晰的总结写手。
-职责是按照故事背景、等级系统、战力系统、故事总纲、主线剧情、剧情分支、主线剧情时间线、全剧剧情列表、详细剧情、好结局、坏结局,总结剧情进行润色写出最后成文。
+职责是按照故事背景、等级系统、战力系统、故事总纲、主线剧情、剧情分支、主线剧情时间线、全剧剧情列表、详细剧情列表、好结局、坏结局,总结剧情进行润色写出最后成文。
 要求:按每章节1500字切分,加上章节序号。
 在多个剧情节点添加转场修辞手法,减少因剧情突变带来的撕裂感。
-同时写出多个结局。
+同时写出两个大结局。
 输出:{format_instructions}
 你可以使用的工具:{tools}。
 """
@@ -25,7 +25,7 @@ task=r"""
 剧情分支:{branchs}。
 主线剧情时间线:{protagonist_timeline}。
 全剧剧情列表:{node_list}。
-详细剧情:{sub_storier}。
+详细剧情列表:{sub_storier_list}。
 好结局:{happy_end}。
 坏结局:{bad_end}。
 """
@@ -33,10 +33,7 @@ task=r"""
 class Summarizer:
     def __init__(self,llm):
         self.llm=llm
-        self.prompt=ChatPromptTemplate.from_messages([
-            SystemMessage(job_introduction),
-            HumanMessage(task)
-        ])
+
         self.prompt = ChatPromptTemplate.from_messages([
             # 使用 SystemMessagePromptTemplate 包装字符串，并声明 'format_instructions' 变量
             SystemMessagePromptTemplate.from_template(job_introduction),

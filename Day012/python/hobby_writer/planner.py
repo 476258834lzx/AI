@@ -21,7 +21,7 @@ class Storier(BaseModel):
     protagonist: str = Field(description="主角名字")
     storier: str = Field(description="全文讲述的故事总纲")
     roles:list[str]=Field(description="尽可能多的关键角色列表")
-    main_storyline: str = Field(description="基于故事总纲和关键角色构建的主线剧情")
+    main_storyline: str = Field(description="基于故事总纲和关键角色构建的详细对应每个等级的主线剧情")
     branchs:list[branch]=Field(description="尽可能多的支线剧情列表")
     protagonist_timeline: list[timeline_node] = Field(description="按独特历法顺序发展的主线剧情列表")
     happy_end: str = Field(description="皆大欢喜的结局和影响")
@@ -33,12 +33,12 @@ job_introduction=r"""
 要求:编写4个步骤的情节脉络,包含故事背景铺垫、剧情发展和人物成长、高潮剧情和人物碰撞、故事结尾和影响。
 故事背景设定唯一。
 拉长时间线,使主角的成长更为丰满。
-主线剧情丰富,较长,充满惊险与波折。
+主线剧情较长、丰富、充满惊险与波折。
 多条支线剧情。
-穿插多条支线的关键人物。
+穿插于多条支线的关键人物。
 剧情支线不断碰撞,产生关键剧情节点。
 人物前后人设不能撕裂,关键剧情不能互相冲突,不能战力崩坏,不能出现无效脉络。
-输出:{format_instructions}
+输出严格满足格式:{format_instructions}
 你可以使用的工具:{tools}。
 """
 task=r"""
@@ -48,10 +48,7 @@ task=r"""
 class Planner:
     def __init__(self,llm):
         self.llm=llm
-        self.prompt=ChatPromptTemplate.from_messages([
-            SystemMessage(job_introduction),
-            HumanMessage(task)
-        ])
+
         self.prompt = ChatPromptTemplate.from_messages([
             # 使用 SystemMessagePromptTemplate 包装字符串，并声明 'format_instructions' 变量
             SystemMessagePromptTemplate.from_template(job_introduction),
