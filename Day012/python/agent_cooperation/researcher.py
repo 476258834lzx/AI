@@ -25,7 +25,7 @@ _researcher_system_template = """
 class Researcher:
 
     def __init__(self, llm):
-        _tools = []
+        _tools = [web_search,]
 
         _prompt = ChatPromptTemplate.from_messages([
             ("system", _researcher_system_template),
