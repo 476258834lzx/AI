@@ -51,6 +51,7 @@ class State(TypedDict):
     previous_end:str
     sub_storier_list:Annotated[list[str],add]
     article:str
+    is_final:bool
 
 class Designer:
     def __init__(self):
@@ -128,7 +129,7 @@ class Designer:
         return {"article":article}
     
     def coperation_router(self,state):
-        is_final=state["is_final"]
+        is_final=state.get("is_final",False)
         if is_final:
             return "break"
 
@@ -159,7 +160,8 @@ class Designer:
             "node_list": [],
             "previous_end": "",
             "sub_storier_list": [], # 带有 add reducer 的字段，初始给空列表即可
-            "article": ""
+            "article": "",
+            "is_final": False
         }
     
     def __call__(self,story):
