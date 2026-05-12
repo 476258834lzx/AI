@@ -1,0 +1,1081 @@
+请遵循以下原则"在动手前明确说出假设，不确定就问，有多种解读就都列出来，不要随便选择一个"。我的工作目录为/data/Workspace/airelearn/Day013/python/my_llm，请参考/data/Workspace/airelearn/Day011/python/my_llm/pretrain.py，将trainer适配为deepspeed版本并调通，测试最小模型最小参数训练一轮。
+我先读取两个文件，了解当前状态和需要适配的内容。
+
+Read pretrain.py
+Read train_deepspeed.py
+让我检查 Day013 目录结构和相关依赖文件。
+
+Bash 列出Day013目录内容
+IN
+ls -la /data/Workspace/airelearn/Day013/python/my_llm/
+
+OUT
+total 160
+drwxr-xr-x 4 root root   280 May  9 18:08 .
+drwxr-xr-x 3 root root    20 May  9 02:08 ..
+drwxr-xr-x 2 root root   210 May  9 17:47 __pycache__
+-rw-r--r-- 1 root root 10538 May  9 17:38 config.py
+-rw-r--r-- 1 root root 14089 May  9 17:41 convert_to_hf.py
+-rw-r--r-- 1 root root 14792 May  9 17:38 dataset.py
+-rw-r--r-- 1 root root   298 May  9 18:06 deepspeed_config.json
+-rw-r--r-- 1 root root  7810 May  9 17:42 main.py
+-rw-r--r-- 1 root root 25718 May  9 17:45 modeling_llama.py
+-rw-r--r-- 1 root root 14151 May  9 17:36 modeling_vlm.py
+drwxr-xr-x 5 root root    76 May  9 17:47 output
+-rw-r--r-- 1 root root 12647 May  9 17:43 test_model.py
+-rw-r--r-- 1 root root 10736 May  9 18:08 train_deepspeed.py
+-rw-r--r-- 1 root root 13231 May  9 17:47 trainer.py
+-rw-r--r-- 1 root root 15718 May  9 17:28 vision_encoder.py
+Read modeling_llama.py
+Read config.py
+现在我理解了代码结构。在动手前先明确假设：
+
+假设列表：
+
+Day011 的风格更简洁可靠：直接从 training_dataloader 获取数据，模型输出直接是 logits
+Day013 的 LlamaForCausalLM 输出应该和 Day011 一样直接是 tensor，不需要从 dict 提取
+vocab_size 需要从 config 获取，不是硬编码 50000
+需要保持与 Day011 pretrain.py 相同的分布式训练模式
+需要确认：
+
+Day013 的 LlamaForCausalLM 模型输出格式是什么？
+让我先检查一下模型的实际输出格式。
+
+Read modeling_llama.py (lines 601-700)
+Read deepspeed_config.json
+Read modeling_llama.py (lines 696-775)
+Read config.py (lines 46-145)
+现在我完全理解了。确认的假设：
+
+LlamaForCausalLM 输出是 dict：{'logits': ..., 'loss': ..., 'hidden_states': ...}
+vocab_size = 50000（从 ModelConfig 默认值）
+Day011 的风格更简洁可靠
+我来修改 train_deepspeed.py，参考 Day011 的实现方式。
+
+Edit train_deepspeed.py
+Edit failed
+让我重新读取文件看看实际内容。
+
+Read train_deepspeed.py
+Bash 直接读取文件内容
+IN
+cat /data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py
+
+OUT
+"""
+DeepSpeed 训练器
+
+基于 Day011 pretrain.py 的 DeepSpeed 实现方式
+兼容 Day013 的模型架构
+
+用法:
+    deepspeed train_deepspeed.py --deepspeed_config deepspeed_config.json
+"""
+
+import os
+import sys
+import json
+import argparse
+import random
+from pathlib import Path
+from datetime import datetime
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+import deepspeed
+from deepspeed.comm import comm as dist
+
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    HAS_TENSORBOARD = True
+except ImportError:
+    HAS_TENSORBOARD = False
+    SummaryWriter = None
+
+# 本地模块
+from config import ModelConfig, TrainingConfig, ConfigFactory
+from modeling_llama import LlamaForCausalLM
+from modeling_vlm import LlamaForConditionalGeneration
+from dataset import RandomTextDataset, MultimodalDataset
+
+
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='DeepSpeed Llama Training')
+
+    # DeepSpeed 参数
+    parser.add_argument('--local_rank', type=int, default=-1)
+
+    # 训练参数
+    parser.add_argument('--data_file', type=str, default=None)
+    parser.add_argument('--output_dir', type=str, default='./output')
+    parser.add_argument('--checkpoint_dir', type=str, default='./weights')
+    parser.add_argument('--save_tag', type=int, default=0)
+
+    # 模型参数
+    parser.add_argument('--model_size', type=str, default='mini', choices=['mini', 'small', 'vlm'])
+
+    # 数据参数
+    parser.add_argument('--paragraph_size', type=int, default=128)
+    parser.add_argument('--num_samples', type=int, default=1000)
+
+    parser = deepspeed.add_config_arguments(parser)
+    args = parser.parse_args()
+    return args
+
+
+class DeepSpeedTrainer:
+    """
+    DeepSpeed 训练器
+
+    参考 Day011 pretrain.py 的实现方式
+    支持 ZeRO 优化、混合精度训练、梯度累积
+    """
+
+    def __init__(self, args):
+        self.args = args
+
+        # 初始化分布式环境（与 Day011 pretrain.py 一致）
+        deepspeed.init_distributed()
+
+        # 获取 rank
+        self.rank = dist.get_rank()
+        self.world_size = dist.get_world_size()
+        self.is_main_process = (self.rank == 0)
+
+        # 初始化日志（仅主进程）
+        if self.is_main_process and HAS_TENSORBOARD:
+            self.log = SummaryWriter(f"runs/{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+        else:
+            self.log = None
+
+        # 加载 DeepSpeed 配置
+        self._load_deepspeed_config()
+
+        # 创建模型
+        self._create_model()
+
+        # 初始化 DeepSpeed
+        self._init_deepspeed()
+
+        # 训练状态
+        self.global_step = 0
+
+    def _load_deepspeed_config(self):
+        """加载并动态调整 DeepSpeed 配置"""
+        if self.is_main_process:
+            with open(self.args.deepspeed_config, 'r') as f:
+                self.ds_config = json.load(f)
+
+            print(f"DeepSpeed Config loaded")
+        else:
+            self.ds_config = None
+
+    def _create_model(self):
+        """创建模型"""
+        config_map = {
+            'mini': ConfigFactory.create_mini_model,
+            'small': ConfigFactory.create_small_model,
+            'vlm': ConfigFactory.create_vlm_model
+        }
+
+        model_config = config_map[self.args.model_size]()
+
+        if model_config.use_vision:
+            self.model = LlamaForConditionalGeneration(model_config)
+        else:
+            self.model = LlamaForCausalLM(model_config)
+
+        if self.is_main_process:
+            num_params = sum(p.numel() for p in self.model.parameters())
+            print(f"Model created: {num_params:,} parameters")
+
+    def _init_deepspeed(self):
+        """初始化 DeepSpeed 引擎"""
+        # 创建数据集
+        if self.args.data_file and os.path.exists(self.args.data_file):
+            from dataset import PretrainDataset
+            train_dataset = PretrainDataset(
+                self.args.data_file,
+                self.args.paragraph_size
+            )
+        else:
+            model_config = ConfigFactory.create_mini_model()
+            train_dataset = RandomTextDataset(
+                num_samples=self.args.num_samples,
+                seq_length=self.args.paragraph_size,
+                vocab_size=model_config.vocab_size
+            )
+
+        # 损失函数（忽略 padding token）
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+
+        # 初始化 DeepSpeed（与 Day011 pretrain.py 一致）
+        model_parameters = list(self.model.parameters())
+
+        self.engine, self.optimizer, _, self.lr_scheduler = deepspeed.initialize(
+            args=self.args,
+            model=self.model,
+            model_parameters=model_parameters,
+            training_data=train_dataset
+        )
+
+        if self.is_main_process:
+            print(f"DeepSpeed initialized: {self.world_size} GPUs")
+
+    def train(self):
+        """主训练循环"""
+        self.engine.train()
+
+        # 尝试加载检查点
+        _, client_sd = self.engine.load_checkpoint(
+            self.args.checkpoint_dir,
+            tag=None
+        )
+
+        if client_sd is None:
+            client_sd = {"step": 0}
+
+        self.global_step = client_sd['step']
+
+        # 训练循环
+        for i, batch in enumerate(self.engine.training_dataloader()):
+            # 确保数据在正确设备上
+            input_ids = batch['input_ids'].to(device=self.engine.device, dtype=torch.long)
+
+            # 因果推理：xs 是输入，ys 是目标
+            xs = input_ids[:, :-1]
+            ys = input_ids[:, 1:]
+
+            # 前向传播
+            outputs = self.engine(xs)
+
+            # 处理输出
+            if isinstance(outputs, dict):
+                logits = outputs.get('logits', outputs.get(0))
+            else:
+                logits = outputs
+
+            # 转换 logits 形状
+            logits = logits.reshape(-1, logits.size(-1))
+
+            # 计算损失
+            ys = ys.reshape(-1)
+            loss = self.loss_fn(logits, ys)
+
+            # DeepSpeed 反向传播（与 Day011 pretrain.py 一致）
+            self.engine.backward(loss)
+
+            # DeepSpeed 优化步骤
+            self.engine.step()
+
+            # 日志（仅主进程）
+            if self.is_main_process and i % 100 == 0:
+                print(f"Step {self.global_step} | Loss: {loss.item():.4f}")
+                if self.log and HAS_TENSORBOARD:
+                    self.log.add_scalar("loss", loss.item(), self.global_step)
+
+            self.global_step += 1
+
+        # 保存检查点
+        self.save_checkpoint()
+
+    def save_checkpoint(self):
+        """保存检查点"""
+        save_tag = self.args.save_tag
+
+        self.engine.save_checkpoint(
+            self.args.checkpoint_dir,
+            tag=f"{save_tag}",
+            client_state={"step": self.global_step}
+        )
+
+        if self.is_main_process:
+            print(f"Checkpoint saved to {self.args.checkpoint_dir}/{save_tag}")
+
+    def cleanup(self):
+        """清理资源"""
+        if self.log:
+            self.log.close()
+
+
+# =============================================================================
+# 简化版本：使用标准 PyTorch DataLoader
+# =============================================================================
+class DeepSpeedTrainerSimple:
+    """
+    简化的 DeepSpeed 训练器
+
+    使用标准 PyTorch DataLoader
+    """
+
+    def __init__(self, args):
+        self.args = args
+
+        # 初始化分布式环境
+        deepspeed.init_distributed()
+
+        # 获取 rank
+        self.rank = dist.get_rank()
+        self.world_size = dist.get_world_size()
+        self.is_main_process = (self.rank == 0)
+
+        # 创建模型
+        model_config = ConfigFactory.create_mini_model()
+        self.model = LlamaForCausalLM(model_config)
+
+        # 创建 DataLoader
+        dataset = RandomTextDataset(
+            num_samples=args.num_samples,
+            seq_length=args.paragraph_size,
+            vocab_size=model_config.vocab_size
+        )
+        self.train_loader = DataLoader(
+            dataset,
+            batch_size=1,
+            shuffle=True
+        )
+
+        # 初始化 DeepSpeed
+        from torch.optim import AdamW
+        optimizer = AdamW(self.model.parameters(), lr=1e-4)
+
+        self.engine, _, _, _ = deepspeed.initialize(
+            args=args,
+            model=self.model,
+            optimizer=optimizer
+        )
+
+        # 损失函数
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+
+        # 训练状态
+        self.global_step = 0
+
+    def train(self):
+        """训练循环"""
+        self.engine.train()
+
+        for batch in self.train_loader:
+            input_ids = batch['input_ids'].to(self.engine.device)
+
+            xs = input_ids[:, :-1]
+            ys = input_ids[:, 1:]
+
+            outputs = self.engine(xs)
+
+            if isinstance(outputs, dict):
+                logits = outputs['logits']
+            else:
+                logits = outputs
+
+            logits = logits.reshape(-1, logits.size(-1))
+            ys = ys.reshape(-1)
+            loss = self.loss_fn(logits, ys)
+
+            self.engine.backward(loss)
+            self.engine.step()
+
+            if self.is_main_process and self.global_step % 100 == 0:
+                print(f"Step {self.global_step} | Loss: {loss.item():.4f}")
+
+            self.global_step += 1
+
+    def save(self, save_dir):
+        """保存检查点"""
+        self.engine.save_checkpoint(save_dir)
+
+
+# =============================================================================
+# DeepSpeed 配置文件模板
+# =============================================================================
+DEEPSPEED_CONFIG_TEMPLATE = {
+    "train_batch_size": 8,
+    "train_micro_batch_size_per_gpu": 1,
+    "gradient_accumulation_steps": 8,
+    "steps_per_print": 10,
+    "zero_optimization": {"stage": 0},
+    "gradient_clipping": 1.0,
+    "fp16": {"enabled": True},
+    "wall_clock_breakdown": False
+}
+
+
+def generate_deepspeed_config(output_path='deepspeed_config.json'):
+    """生成默认 DeepSpeed 配置"""
+    with open(output_path, 'w') as f:
+        json.dump(DEEPSPEED_CONFIG_TEMPLATE, f, indent=4)
+    print(f"Generated: {output_path}")
+
+
+# =============================================================================
+# 主函数
+# =============================================================================
+def main():
+    args = parse_arguments()
+
+    if not os.path.exists(args.deepspeed_config):
+        generate_deepspeed_config(args.deepspeed_config)
+
+    trainer = DeepSpeedTrainerSimple(args)
+    trainer.train()
+    trainer.save(args.checkpoint_dir)
+
+    print("Training completed!")
+
+
+if __name__ == '__main__':
+    main()
+文件已经被修改过了，结构已经接近 Day011 风格。让我分析当前代码并运行测试看看有什么问题。
+
+Bash 运行 DeepSpeed 训练测试
+IN
+cd /data/Workspace/airelearn/Day013/python/my_llm && deepspeed train_deepspeed.py --deepspeed_config deepspeed_config.json --num_samples 100 --paragraph_size 64 --local_rank -1 2>&1 | head -100
+
+OUT
+[2026-05-10 18:33:56,771] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:33:56,771] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --deepspeed_config deepspeed_config.json --num_samples 100 --paragraph_size 64 --local_rank -1
+[2026-05-10 18:34:04,019] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:34:04,019] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:34:04,019] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:34:04,019] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:34:04,019] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:34:04,020] [INFO] [launch.py:272:main] process 1715 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--deepspeed_config', 'deepspeed_config.json', '--num_samples', '100', '--paragraph_size', '64', '--local_rank', '-1']
+Step 0 | Loss: 8.3047
+Training completed!
+[rank0]:[W510 18:34:14.187815208 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:34:17,022] [INFO] [launch.py:367:main] Process 1715 exits successfully.
+训练成功运行了！Loss从8.3047开始。但我发现几个问题需要修复：
+
+只打印了Step 0 - 100个样本应该有多步训练
+打印逻辑问题 - i % 100 == 0 只在 i=0 时满足
+data_file传参可能有问题 - 需要确认 PretrainDataset 是否能正常加载
+让我检查 dataset.py 确认 PretrainDataset 的接口，并优化训练脚本。
+
+Read dataset.py
+Bash 查找数据集类定义
+IN
+grep -n "class PretrainDataset\|class RandomTextDataset\|def __getitem__" /data/Workspace/airelearn/Day013/python/my_llm/dataset.py | head -30
+
+OUT
+263:class RandomTextDataset(Dataset):
+293:    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+335:    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+405:    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+Bash 查找 PretrainDataset
+IN
+grep -n "PretrainDataset" /data/Workspace/airelearn/Day013/python/my_llm/dataset.py
+
+OUT
+(Bash completed with no output)
+Read dataset.py (lines 261-340)
+我发现了问题：Day013 没有 PretrainDataset，只有 RandomTextDataset。让我查看 Day011 的 pretrain.py 看看它如何处理数据集。
+
+Read pretrain.py
+Bash 读取 Day011 pretrain.py
+IN
+cat /data/Workspace/airelearn/Day011/python/my_llm/pretrain.py
+
+OUT
+import argparse
+import os.path
+import json
+import deepspeed
+from torch.utils.tensorboard import SummaryWriter
+
+from dataset import PretrainDataset
+from model import *
+from torch import nn
+import sys
+import faulthandler
+faulthandler.enable(file=sys.stderr, all_threads=True)
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Storier gpt train')
+    parser.add_argument('--local_rank', default=-1, type=int)
+    parser.add_argument('--data_file', default='./data/2022-05_zh_middle_0010',type=str)
+    parser.add_argument('--ss',default=0,type=int)
+    parser.add_argument('--paragraphsize',default=128,type=int)
+
+    parser=deepspeed.add_config_arguments(parser)
+    args=parser.parse_args()
+    return args
+
+class Trainer:
+    def __init__(self):
+        deepspeed.init_distributed()
+        self.args = parse_arguments()
+
+        rank=deepspeed.comm.get_rank()
+        if rank==0:
+            self.log=SummaryWriter("runs")
+            #根据公式修改配置文件batch,防止读过长token时的batch爆显存
+            ext=int(os.path.basename(self.args.data_file).split("_")[0])
+
+            with open("deepspeed_config.json", "r+", encoding="utf-8") as f:
+                jn=json.load(f)
+
+            accum_size=5
+            micro_size=int(32*256/ext)
+            # micro_size=int(32*round(256/ext))#数据量小时候适用
+            jn["train_micro_batch_size_per_gpu"]=micro_size
+            jn["train_batch_size"]=micro_size*8*accum_size
+            jn["gradient_accumulation_steps"]=accum_size
+
+            with open("./deepspeed_config.json","w+") as f:
+                json.dump(jn,f,indent=4,ensure_ascii=False)
+                f.write("\n")
+                f.flush()
+                f.close()
+
+        self.model=Storier(num_layers=48,input_dim=768,hide_dim=3072,n_q_heads=12,n_kv_heads=2,max_len=16384,num_vocs=50000,cache_max_batch_size=None,cache_max_seq_len=None)
+        self.engine,self.opt,self.training_dataloader,self.lr_scheduler=deepspeed.initialize(
+            args=self.args,
+            model=self.model,
+            training_data=PretrainDataset(f"{self.args.data_file}",self.args.paragraphsize),
+            model_parameters=self.model.parameters(),
+            config="./deepspeed_config.json",
+        )
+        # 预训练阶段的损失函数忽略<pad>token对应的id=0的计算
+        # 但在sft阶段不能忽略它
+        self.loss_fn=nn.CrossEntropyLoss(ignore_index=0)
+
+    def __call__(self):
+        rank=deepspeed.comm.get_rank()
+        self.engine.train()
+        # deepspeed加载检查点的模型权重，默认加载最新权重
+        # 如果想指定某一套权重，加 tag 参数
+        _,client_sd=self.engine.load_checkpoint("weights")#TODO 加载的模型地址
+        if client_sd is None:client_sd={"step":0}
+
+        for i,ds in enumerate(self.training_dataloader):
+            ds=ds.to(device=self.engine.device,dtype=torch.long)
+            xs=ds[:,:-1]#因果推理，模型输入，从第一个字符推后面所有字符
+            ys=ds[:,1:]#模型输出
+            os=self.engine(xs,0)
+
+            os=os.reshape(-1,50000)#NSV
+            os=os-os.mean(-1,keepdims=True)
+
+            ys=ys.reshape(-1)
+            loss=self.loss_fn(os,ys)#自带onehot
+
+            self.engine.backward(loss)
+            self.engine.step()
+
+            step=client_sd["step"]
+            if rank==0:
+                if i%100==0:
+                    print(loss.item())
+                    self.log.add_scalar("loss",loss.item(),step)
+            client_sd["step"]+=1
+
+        save_tag=self.args.ss
+        self.engine.save_checkpoint("weights",tag=f"{save_tag}",client_state={"step":client_sd['step']})#TODO 保存模型的地址
+
+if __name__ == '__main__':
+    train=Trainer()
+    train()
+现在我完全理解了差异：
+
+Day011 vs Day013 关键区别：
+
+Day011 的 PretrainDataset 返回 torch.tensor；Day013 的 RandomTextDataset 返回 {'input_ids': ...}
+Day011 用 self.training_dataloader（直接属性）；Day013 代码用的是 self.engine.training_dataloader()
+Day011 没有从 dict 提取 input_ids
+让我修复代码：
+
+Write train_deepspeed.py
+139 lines
+"""
+DeepSpeed 训练器
+
+参考 Day011 pretrain.py 的 DeepSpeed 实现方式
+适配 Day013 的 LlamaForCausalLM 模型
+
+用法:
+    deepspeed train_deepspeed.py --deepspeed_config deepspeed_config.json
+"""
+
+import os
+import json
+import argparse
+import deepspeed
+from torch.utils.tensorboard import SummaryWriter
+import torch.nn as nn
+
+from modeling_llama import LlamaForCausalLM
+from dataset import RandomTextDataset
+from config import ConfigFactory
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='DeepSpeed Llama Training')
+    parser.add_argument('--local_rank', default=-1, type=int)
+    parser.add_argument('--data_file', type=str, default=None)
+    parser.add_argument('--ss', default=0, type=int)
+    parser.add_argument('--paragraphsize', default=64, type=int)
+    parser.add_argument('--num_samples', default=100, type=int)
+    parser.add_argument('--max_steps', default=None, type=int, help='最大训练步数，None则遍历整个数据集')
+
+    parser = deepspeed.add_config_arguments(parser)
+    args = parser.parse_args()
+    return args
+
+
+class Trainer:
+    def __init__(self):
+        deepspeed.init_distributed()
+
+        self.args = parse_arguments()
+        rank = deepspeed.comm.get_rank()
+
+        # 日志（仅主进程）
+        if rank == 0:
+            self.log = SummaryWriter("runs")
+        else:
+            self.log = None
+
+        # 创建模型
+        model_config = ConfigFactory.create_mini_model()
+        self.model = LlamaForCausalLM(model_config)
+        self.vocab_size = model_config.vocab_size
+
+        # 创建数据集
+        dataset = RandomTextDataset(
+            num_samples=self.args.num_samples,
+            seq_length=self.args.paragraphsize,
+            vocab_size=self.vocab_size
+        )
+
+        # 初始化 DeepSpeed（与 Day011 pretrain.py 一致）
+        self.engine, self.opt, self.training_dataloader, self.lr_scheduler = deepspeed.initialize(
+            args=self.args,
+            model=self.model,
+            training_data=dataset,
+            model_parameters=self.model.parameters(),
+            config="./deepspeed_config.json",
+        )
+
+        # 损失函数忽略 pad token (id=0)
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=0)
+
+    def __call__(self):
+        rank = deepspeed.comm.get_rank()
+        self.engine.train()
+
+        # 加载检查点（如果存在）
+        _, client_sd = self.engine.load_checkpoint("weights")
+        if client_sd is None:
+            client_sd = {"step": 0}
+
+        max_steps = self.args.max_steps
+
+        for i, batch in enumerate(self.training_dataloader):
+            # 处理 Day013 RandomTextDataset 返回的 dict
+            if isinstance(batch, dict):
+                input_ids = batch['input_ids']
+            else:
+                input_ids = batch
+
+            ds = input_ids.to(device=self.engine.device, dtype=torch.long)
+
+            # 因果推理：xs 是输入，ys 是目标
+            xs = ds[:, :-1]
+            ys = ds[:, 1:]
+
+            # 前向传播
+            outputs = self.engine(xs)
+
+            # 提取 logits（LlamaForCausalLM 返回 dict）
+            if isinstance(outputs, dict):
+                logits = outputs['logits']
+            else:
+                logits = outputs
+
+            # 转换形状 [B, seq_len, vocab_size] -> [seq_len * B, vocab_size]
+            logits = logits.reshape(-1, self.vocab_size)
+            ys = ys.reshape(-1)
+
+            # 计算损失
+            loss = self.loss_fn(logits, ys)
+
+            # DeepSpeed 反向传播和优化
+            self.engine.backward(loss)
+            self.engine.step()
+
+            step = client_sd["step"]
+            if rank == 0:
+                if i % 10 == 0:
+                    print(f"Step {step} | Loss: {loss.item():.4f}")
+                    if self.log:
+                        self.log.add_scalar("loss", loss.item(), step)
+
+            client_sd["step"] += 1
+
+            # 限制最大步数
+            if max_steps is not None and i >= max_steps - 1:
+                break
+
+        # 保存检查点
+        save_tag = self.args.ss
+        self.engine.save_checkpoint("weights", tag=f"{save_tag}", client_state={"step": client_sd['step']})
+
+
+if __name__ == '__main__':
+    train = Trainer()
+    train()
+运行测试。
+
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --deepspeed_config deepspeed_config.json --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+Exit code 1
+[2026-05-10 18:36:00,021] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:36:00,021] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --deepspeed_config deepspeed_config.json --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:36:07,095] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:36:07,095] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:36:07,095] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:36:07,095] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:36:07,095] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:36:07,096] [INFO] [launch.py:272:main] process 2330 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--deepspeed_config', 'deepspeed_config.json', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+Traceback (most recent call last):
+  File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 15, in <module>
+    from torch.utils.tensorboard import SummaryWriter
+  File "/data/miniconda/envs/torch/lib/python3.12/site-packages/torch/utils/tensorboard/__init__.py", line 1, in <module>
+    import tensorboard
+ModuleNotFoundError: No module named 'tensorboard'
+[2026-05-10 18:36:15,097] [INFO] [launch.py:335:sigkill_handler] Killing subprocess 2330
+[2026-05-10 18:36:15,097] [ERROR] [launch.py:341:sigkill_handler] ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--deepspeed_config', 'deepspeed_config.json', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1'] exits with return code = 1
+缺少 tensorboard 模块。让我修复这个问题。
+
+Edit train_deepspeed.py
+Added 6 lines
+Edit train_deepspeed.py
+Modified
+train_deepspeed.py
+缺少什么库直接安装
+Edit train_deepspeed.py
+Modified
+好的，直接安装缺少的库。
+
+Bash 安装 tensorboard
+IN
+pip install tensorboard -q && echo "tensorboard installed"
+
+OUT
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+tensorboard installed
+运行测试。
+
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --deepspeed_config deepspeed_config.json --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+Exit code 1
+[2026-05-10 18:37:33,386] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:37:33,386] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --deepspeed_config deepspeed_config.json --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:37:40,668] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:37:40,668] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:37:40,669] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:37:40,669] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:37:40,669] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:37:40,669] [INFO] [launch.py:272:main] process 3250 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--deepspeed_config', 'deepspeed_config.json', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 143, in <module>
+[rank0]:     train = Trainer()
+[rank0]:             ^^^^^^^^^
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 69, in __init__
+[rank0]:     self.engine, self.opt, self.training_dataloader, self.lr_scheduler = deepspeed.initialize(
+[rank0]:                                                                          ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/site-packages/deepspeed/__init__.py", line 175, in initialize
+[rank0]:     assert config is None, "Not sure how to proceed, we were given deepspeed configs in the deepspeed arguments and deepspeed.initialize() function call"
+[rank0]:            ^^^^^^^^^^^^^^
+[rank0]: AssertionError: Not sure how to proceed, we were given deepspeed configs in the deepspeed arguments and deepspeed.initialize() function call
+[rank0]:[W510 18:37:48.819694958 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:37:50,671] [INFO] [launch.py:335:sigkill_handler] Killing subprocess 3250
+[2026-05-10 18:37:50,671] [ERROR] [launch.py:341:sigkill_handler] ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--deepspeed_config', 'deepspeed_config.json', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1'] exits with return code = 1
+问题是 deepspeed.initialize() 同时接收了 args 中的 config 和 config 参数，冲突了。让我移除 config 参数，只通过 args 传递。
+
+Read train_deepspeed.py (lines 31-70)
+Edit train_deepspeed.py
+Modified
+还需要在参数中添加 --deepspeed_config。
+
+Edit train_deepspeed.py
+Added 1 line
+运行测试。
+
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+Exit code 1
+[2026-05-10 18:39:03,638] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:39:03,639] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:39:10,696] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:39:10,696] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:39:10,696] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:39:10,696] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:39:10,696] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:39:10,697] [INFO] [launch.py:272:main] process 4181 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 144, in <module>
+[rank0]:     train = Trainer()
+[rank0]:             ^^^^^^^^^
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 48, in __init__
+[rank0]:     self.args = parse_arguments()
+[rank0]:                 ^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 39, in parse_arguments
+[rank0]:     parser = deepspeed.add_config_arguments(parser)
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/site-packages/deepspeed/__init__.py", line 301, in add_config_arguments
+[rank0]:     parser = _add_core_arguments(parser)
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/site-packages/deepspeed/__init__.py", line 275, in _add_core_arguments
+[rank0]:     group.add_argument('--deepspeed_config', default=None, type=str, help='DeepSpeed json configuration file.')
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/argparse.py", line 1500, in add_argument
+[rank0]:     return self._add_action(action)
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/argparse.py", line 1705, in _add_action
+[rank0]:     action = super(_ArgumentGroup, self)._add_action(action)
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/argparse.py", line 1514, in _add_action
+[rank0]:     self._check_conflict(action)
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/argparse.py", line 1654, in _check_conflict
+[rank0]:     conflict_handler(action, confl_optionals)
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/argparse.py", line 1663, in _handle_conflict_error
+[rank0]:     raise ArgumentError(action, message % conflict_string)
+[rank0]: argparse.ArgumentError: argument --deepspeed_config: conflicting option string: --deepspeed_config
+[rank0]:[W510 18:39:18.872816705 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:39:20,698] [INFO] [launch.py:335:sigkill_handler] Killing subprocess 4181
+[2026-05-10 18:39:20,698] [ERROR] [launch.py:341:sigkill_handler] ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1'] exits with return code = 1
+deepspeed.add_config_arguments 已经添加了 --deepspeed_config 参数。让我移除重复的。
+
+Edit train_deepspeed.py
+Added 9 lines
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+Exit code 1
+[2026-05-10 18:39:56,796] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:39:56,796] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:40:04,034] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:40:04,034] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:40:04,034] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:40:04,034] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:40:04,035] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:40:04,035] [INFO] [launch.py:272:main] process 4938 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 154, in <module>
+[rank0]:     train()
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 108, in __call__
+[rank0]:     ds = input_ids.to(device=self.engine.device, dtype=torch.long)
+[rank0]:                                                        ^^^^^
+[rank0]: NameError: name 'torch' is not defined
+[rank0]:[W510 18:40:12.363737464 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:40:15,037] [INFO] [launch.py:335:sigkill_handler] Killing subprocess 4938
+[2026-05-10 18:40:15,037] [ERROR] [launch.py:341:sigkill_handler] ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1'] exits with return code = 1
+需要导入 torch。
+
+Edit train_deepspeed.py
+Added 1 line
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+Exit code 1
+[2026-05-10 18:40:51,557] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:40:51,558] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:40:58,507] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:40:58,508] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:40:58,508] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:40:58,508] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:40:58,508] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:40:58,509] [INFO] [launch.py:272:main] process 5780 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 155, in <module>
+[rank0]:     train()
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 132, in __call__
+[rank0]:     self.engine.backward(loss)
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/site-packages/deepspeed/utils/nvtx.py", line 33, in wrapped_fn
+[rank0]:     ret_val = func(*args, **kwargs)
+[rank0]:               ^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/data/miniconda/envs/torch/lib/python3.12/site-packages/deepspeed/runtime/engine.py", line 2607, in backward
+[rank0]:     assert self.optimizer is not None and not isinstance(self.optimizer, DummyOptim), \
+[rank0]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: AssertionError: must provide optimizer during init in order to use backward
+[2026-05-10 18:41:08,510] [INFO] [launch.py:335:sigkill_handler] Killing subprocess 5780
+[2026-05-10 18:41:08,510] [ERROR] [launch.py:341:sigkill_handler] ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1'] exits with return code = 1
+需要手动创建 optimizer 并传给 deepspeed。
+
+Edit train_deepspeed.py
+Added 4 lines
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+Exit code 1
+[2026-05-10 18:41:55,602] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:41:55,602] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:42:03,059] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:42:03,060] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:42:03,060] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:42:03,060] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:42:03,060] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:42:03,061] [INFO] [launch.py:272:main] process 6657 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 159, in <module>
+[rank0]:     train()
+[rank0]:   File "/data/Workspace/airelearn/Day013/python/my_llm/train_deepspeed.py", line 139, in __call__
+[rank0]:     step = client_sd["step"]
+[rank0]:            ~~~~~~~~~^^^^^^^^
+[rank0]: KeyError: 'step'
+[2026-05-10 18:42:13,062] [INFO] [launch.py:335:sigkill_handler] Killing subprocess 6657
+[2026-05-10 18:42:13,062] [ERROR] [launch.py:341:sigkill_handler] ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1'] exits with return code = 1
+client_sd 返回的不是 None 而是空字典。让我修复这个检查逻辑。
+
+Edit train_deepspeed.py
+Modified
+Bash 运行 DeepSpeed 训练测试
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1 2>&1
+
+OUT
+[2026-05-10 18:42:48,645] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:42:48,645] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 10 --local_rank -1
+[2026-05-10 18:42:55,831] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:42:55,831] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:42:55,831] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:42:55,831] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:42:55,831] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:42:55,832] [INFO] [launch.py:272:main] process 7482 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '10', '--local_rank', '-1']
+Step 0 | Loss: 8.3438
+[rank0]:[W510 18:43:05.195349881 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:43:07,833] [INFO] [launch.py:367:main] Process 7482 exits successfully.
+只训练了1步就结束了。让我增加步数来测试。
+
+Bash 运行更多步数的训练测试
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 50 --local_rank -1 2>&1 | tail -30
+
+OUT
+[2026-05-10 18:43:34,064] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:43:34,064] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --max_steps 50 --local_rank -1
+[2026-05-10 18:43:41,368] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:43:41,369] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:43:41,369] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:43:41,369] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:43:41,369] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:43:41,370] [INFO] [launch.py:272:main] process 8278 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--max_steps', '50', '--local_rank', '-1']
+Step 10 | Loss: 8.3750
+Step 20 | Loss: 8.3828
+Step 30 | Loss: 8.3359
+Step 40 | Loss: 8.3047
+Step 50 | Loss: 8.3047
+[rank0]:[W510 18:43:51.223637421 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:43:53,372] [INFO] [launch.py:367:main] Process 8278 exits successfully.
+训练成功！Loss 在波动，这是随机数据的正常行为。让我测试遍历整个数据集（训练一轮）。
+
+Bash 训练完整一轮（100步）
+IN
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --local_rank -1 2>&1 | tail -20
+
+OUT
+[2026-05-10 18:44:28,484] [WARNING] [runner.py:232:fetch_hostfile] Unable to find hostfile, will proceed with training with local resources only.
+[2026-05-10 18:44:28,484] [INFO] [runner.py:630:main] cmd = /data/miniconda/envs/torch/bin/python3.12 -u -m deepspeed.launcher.launch --world_info=eyJsb2NhbGhvc3QiOiBbMF19 --master_addr=127.0.0.1 --master_port=29500 --enable_each_rank_log=None --log_level=info train_deepspeed.py --num_samples 100 --paragraphsize 64 --local_rank -1
+[2026-05-10 18:44:35,676] [INFO] [launch.py:162:main] WORLD INFO DICT: {'localhost': [0]}
+[2026-05-10 18:44:35,676] [INFO] [launch.py:168:main] nnodes=1, num_local_procs=1, node_rank=0
+[2026-05-10 18:44:35,676] [INFO] [launch.py:179:main] global_rank_mapping=defaultdict(<class 'list'>, {'localhost': [0]})
+[2026-05-10 18:44:35,676] [INFO] [launch.py:180:main] dist_world_size=1
+[2026-05-10 18:44:35,676] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:44:35,677] [INFO] [launch.py:272:main] process 9113 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--local_rank', '-1']
+Step 60 | Loss: 8.3672
+Step 70 | Loss: 8.3359
+Step 80 | Loss: 8.3438
+Step 90 | Loss: 8.3047
+Step 100 | Loss: 8.3203
+Step 110 | Loss: 8.3047
+Step 120 | Loss: 8.3125
+Step 130 | Loss: 8.3359
+Step 140 | Loss: 8.3516
+Step 150 | Loss: 8.3359
+[rank0]:[W510 18:44:45.838824574 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:44:48,678] [INFO] [launch.py:367:main] Process 9113 exits successfully.
+训练完成！100个样本全部训练了一遍（100步）。让我检查是否保存了checkpoint。
+
+Bash 检查checkpoint
+IN
+ls -la weights/ 2>/dev/null || echo "weights目录不存在"
+
+OUT
+total 4
+drwxr-xr-x 4 root root  50 May 10 18:43 .
+drwxr-xr-x 6 root root 307 May 10 18:42 ..
+drwxr-xr-x 2 root root  40 May 10 18:43 0
+drwxr-xr-x 2 root root  40 May 10 18:34 global_step12
+-rw-r--r-- 1 root root   1 May 10 18:44 latest
+Checkpoint保存成功！让我清理旧checkpoint并重新运行一次完整训练以验证。
+
+Bash 清理旧checkpoint并重新训练
+IN
+rm -rf weights && deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --local_rank -1 2>&1 | tail -15
+
+OUT
+[2026-05-10 18:45:30,048] [INFO] [launch.py:184:main] Setting CUDA_VISIBLE_DEVICES=0
+[2026-05-10 18:45:30,049] [INFO] [launch.py:272:main] process 9956 spawned with command: ['/data/miniconda/envs/torch/bin/python3.12', '-u', 'train_deepspeed.py', '--local_rank=0', '--num_samples', '100', '--paragraphsize', '64', '--local_rank', '-1']
+[2026-05-10 18:45:37,700] [WARNING] [engine.py:3448:load_checkpoint] Unable to find latest file at weights/latest, if trying to load latest checkpoint please ensure this file exists or pass an explicit checkpoint tag when loading a checkpoint.
+Step 0 | Loss: 8.3047
+Step 10 | Loss: 8.3281
+Step 20 | Loss: 8.3203
+Step 30 | Loss: 8.3047
+Step 40 | Loss: 8.3594
+Step 50 | Loss: 8.3594
+Step 60 | Loss: 8.3125
+Step 70 | Loss: 8.3594
+Step 80 | Loss: 8.3594
+Step 90 | Loss: 8.3672
+[rank0]:[W510 18:45:39.838470176 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+[2026-05-10 18:45:42,051] [INFO] [launch.py:367:main] Process 9956 exits successfully.
+训练成功！确认checkpoint已保存。
+
+Bash 确认checkpoint保存
+IN
+ls -la weights/ && cat weights/latest
+
+OUT
+total 4
+drwxr-xr-x 3 root root  29 May 10 18:45 .
+drwxr-xr-x 6 root root 307 May 10 18:45 ..
+drwxr-xr-x 2 root root  40 May 10 18:45 0
+-rw-r--r-- 1 root root   1 May 10 18:45 latest
+0
+DeepSpeed训练器适配完成！
+
+修改内容：
+
+参考 Day011 pretrain.py 的风格重构代码
+使用 Day013 的 RandomTextDataset（处理返回的 dict 格式）
+使用 LlamaForCausalLM（正确提取 logits 从 dict 输出）
+手动创建 optimizer 传给 deepspeed.initialize
+修复 client_sd 的检查逻辑
+测试结果：
+
+100个样本，64序列长度
+成功训练100步（完整一轮）
+Loss: 8.30~8.37（随机数据正常范围）
+Checkpoint 保存到 weights/ 目录
+使用方式：
+
+
+cd /data/Workspace/airelearn/Day013/python/my_llm
+deepspeed train_deepspeed.py --num_samples 100 --paragraphsize 64 --local_rank -1
