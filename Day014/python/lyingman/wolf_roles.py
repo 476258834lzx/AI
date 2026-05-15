@@ -27,10 +27,10 @@ def get_wolf_king_role() -> Role:
 
 
 def get_white_wolf_king_role() -> Role:
-    """白狼王 - 自爆带人"""
+    """白狼王 - 自爆可带人"""
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WHITE_WOLF_KING],
-        description="白天可以自爆，自爆时可以选择带走一名玩家。",
+        description="白天可以自爆带走一名玩家，自爆后直接进入黑夜。",
         camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
@@ -49,14 +49,14 @@ def get_wolf_beauty_role() -> Role:
 
 
 def get_evil_knight_role() -> Role:
-    """恶灵骑士 - 不被查验，死亡随机带走"""
+    """恶灵骑士 - 免疫夜间伤害，被查验/毒杀会反伤"""
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.EVIL_KNIGHT],
-        description="预言家查验结果显示为好人。死亡时随机带走一名玩家。",
+        description="免疫夜间伤害。预言家查验后次日死亡，被女巫毒杀时女巫死亡。",
         camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
-        can_shoot_on_death=True,
+        can_shoot_on_death=False,  # 恶灵骑士死亡不会带走人
     )
 
 

@@ -645,6 +645,26 @@ def white_wolf_self_destruct(game_state: dict, white_wolf_id: int, target_id: Op
     return result
 
 
+@tool
+def wolf_self_destruct(game_state: dict, wolf_id: int) -> str:
+    """普通狼人/狼王/狼美人自爆（不能带人，直接进入黑夜）"""
+    state = GameState(**game_state)
+    wolf = state.players.get(wolf_id)
+
+    if not wolf:
+        return "玩家不存在"
+
+    if not wolf.is_alive():
+        return "狼人已死亡"
+
+    wolf_role_names = ["狼人", "狼王", "狼美人"]
+    if not wolf.role or wolf.role.name not in wolf_role_names:
+        return "你不是狼人阵营"
+
+    wolf.status = PlayerStatus.DEAD_DAY
+    return f"【{wolf.name}】自爆出局！游戏直接进入黑夜。"
+
+
 # ===== 中立角色技能 =====
 
 @tool
@@ -794,10 +814,10 @@ def get_available_tools(role_name: str) -> list:
     """获取角色可用的技能"""
     wolf_night_tools = [wolf_discuss_propose, wolf_discuss_agree, wolf_confirm_kill, wolf_kill, wolf_self_kill]
     tools_map = {
-        "狼人": wolf_night_tools + [vote_player],
-        "狼王": wolf_night_tools + [hunter_shoot, vote_player],
+        "狼人": wolf_night_tools + [wolf_self_destruct, vote_player],
+        "狼王": wolf_night_tools + [wolf_self_destruct, hunter_shoot, vote_player],
         "白狼王": wolf_night_tools + [white_wolf_self_destruct, vote_player],
-        "狼美人": wolf_night_tools + [vote_player],
+        "狼美人": wolf_night_tools + [wolf_self_destruct, vote_player],
         "恶灵骑士": wolf_night_tools + [hunter_shoot, vote_player],
         "预言家": [seer_check, vote_player],
         "女巫": [witch_heal, witch_poison, witch_skip_heal, witch_skip_poison, vote_player],

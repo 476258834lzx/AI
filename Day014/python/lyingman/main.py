@@ -2,7 +2,7 @@
 import os
 from typing import Optional
 
-from .game_state import GameState
+from .game_state import GameState, PlayerStatus
 from .referee import Referee
 from .god import God
 from .graph import WerewolfGraph
@@ -153,6 +153,9 @@ class WerewolfGame:
 
             # 宣布熊咆哮
             self._announce_bear_roar()
+
+            # 处理恶灵骑士反伤
+            self._handle_evil_knight_revenge()
 
             # 检查第三方获胜（只有存在丘比特且有人狼链情侣时才判定）
             if self.game_state.cupid_id is not None and self.game_state.lovers:
@@ -321,15 +324,20 @@ class WerewolfGame:
                 target_player = self.game_state.players.get(target)
                 if target_player and target_player.role:
                     if target_player.role.name == "恶灵骑士":
-                        result = "好人"
+                        # 恶灵骑士：查验显示狼人，但次日反伤预言家
+                        result = "狼人"
+                        self.game_state.seer_check_result = {"target_id": target, "result": result}
+                        self.game_state.evil_knight_checked_by = seer_id
+                        print(f"预言家查验了 {target_player.name}: {result}")
+                        print(f"  （实际为恶灵骑士，次日将反伤预言家）")
                     elif target_player.role.name.endswith("狼"):
                         result = "狼人"
+                        self.game_state.seer_check_result = {"target_id": target, "result": result}
+                        print(f"预言家查验了 {target_player.name}: {result}")
                     else:
                         result = "好人"
-                else:
-                    result = "好人"
-                self.game_state.seer_check_result = {"target_id": target, "result": result}
-                print(f"预言家查验了 {target_player.name}: {result}")
+                        self.game_state.seer_check_result = {"target_id": target, "result": result}
+                        print(f"预言家查验了 {target_player.name}: {result}")
 
         print("\n[女巫阶段]")
         witches = self._get_role_players("女巫")
@@ -342,6 +350,24 @@ class WerewolfGame:
                     self.game_state.witch_heal_used = True
                     self.game_state.revives.append(target)
                     print(f"女巫救了 {self.game_state.players[target].name}")
+
+            # 女巫毒人
+            if not self.game_state.witch_poison_used:
+                poison_target = agent.decide_night_action("witch_poison")
+                if poison_target:
+                    target_player = self.game_state.players.get(poison_target)
+                    if target_player and target_player.role:
+                        if target_player.role.name == "恶灵骑士":
+                            # 恶灵骑士反伤：女巫毒恶灵骑士，女巫自己死，恶灵骑士不死
+                            self.game_state.evil_knight_poisoned_by = witch_id
+                            witch = self.game_state.players.get(witch_id)
+                            if witch and witch.is_alive():
+                                witch.status = PlayerStatus.DEAD_NIGHT
+                                print(f"女巫试图毒 {target_player.name}，但被恶灵骑士反伤！女巫死亡！")
+                        else:
+                            target_player.is_poisoned = True
+                            self.game_state.witch_poison_used = True
+                            print(f"女巫毒了 {target_player.name}")
 
         print("\n[守卫守护阶段]")
         guardians = self._get_role_players("守卫")
@@ -629,6 +655,28 @@ class WerewolfGame:
                 print(f"\n【法官宣布】熊咆哮了！")
             else:
                 self.game_state.bear_roared_today = False
+
+    def _handle_evil_knight_revenge(self):
+        """处理恶灵骑士反伤 - 在白天宣布"""
+        # 查验反伤
+        if self.game_state.evil_knight_checked_by is not None:
+            seer = self.game_state.players.get(self.game_state.evil_knight_checked_by)
+            if seer and seer.is_alive():
+                seer.status = PlayerStatus.DEAD_DAY
+                if self.god.current_round:
+                    self.god.current_round.deaths.append(self.game_state.evil_knight_checked_by)
+                print(f"\n【法官宣布】{seer.name}因查验恶灵骑士被反伤死亡！")
+            self.game_state.evil_knight_checked_by = None
+
+        # 毒杀反伤
+        if self.game_state.evil_knight_poisoned_by is not None:
+            witch = self.game_state.players.get(self.game_state.evil_knight_poisoned_by)
+            if witch and witch.is_alive():
+                witch.status = PlayerStatus.DEAD_DAY
+                if self.god.current_round:
+                    self.god.current_round.deaths.append(self.game_state.evil_knight_poisoned_by)
+                print(f"\n【法官宣布】{witch.name}因毒杀恶灵骑士被反伤死亡！")
+            self.game_state.evil_knight_poisoned_by = None
 
     def _get_role_players(self, role_name: str) -> list[int]:
         if not self.game_state:

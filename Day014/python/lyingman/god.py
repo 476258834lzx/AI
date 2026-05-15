@@ -88,7 +88,10 @@ class God:
         if wolf_target is not None:
             target = self.game_state.players.get(wolf_target)
             if target and target.is_alive():
-                if not target.is_protected:
+                # 恶灵骑士免疫狼刀
+                if target.role and target.role.name == "恶灵骑士":
+                    print(f"【{target.name}】是恶灵骑士，免疫狼刀！")
+                elif not target.is_protected:
                     deaths.append(wolf_target)
 
         # 2. 处理女巫救人

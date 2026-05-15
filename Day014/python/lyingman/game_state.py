@@ -178,6 +178,10 @@ class GameState:
 
     hunter_shoot_target: Optional[int] = None  # 猎人选择开枪带走的目标
 
+    # 恶灵骑士反伤记录
+    evil_knight_checked_by: Optional[int] = None  # 被哪个预言家查验过
+    evil_knight_poisoned_by: Optional[int] = None  # 被哪个女巫毒过
+
     # 中立角色技能状态
     fox_lost_skill: bool = False  # 狐狸是否失去技能
     fox_last_check_has_wolf: bool = False  # 狐狸上次查验是否有狼人
