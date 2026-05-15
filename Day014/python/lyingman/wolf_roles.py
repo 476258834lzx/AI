@@ -8,6 +8,7 @@ def get_werewolf_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WEREWOLF],
         description="每晚可以与其他狼人一起选择刀杀一名玩家。",
+        camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -18,8 +19,10 @@ def get_wolf_king_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WOLF_KING],
         description="死亡时可以开枪带走一名玩家。被投票出局时无法发动技能。",
+        camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
+        can_shoot_on_death=True,
     )
 
 
@@ -28,6 +31,7 @@ def get_white_wolf_king_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WHITE_WOLF_KING],
         description="白天可以自爆，自爆时可以选择带走一名玩家。",
+        camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -38,6 +42,7 @@ def get_wolf_beauty_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WOLF_BEAUTY],
         description="每晚可以魅惑一名玩家。死亡时自动带走被魅惑的玩家。",
+        camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -48,8 +53,10 @@ def get_evil_knight_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.EVIL_KNIGHT],
         description="预言家查验结果显示为好人。死亡时随机带走一名玩家。",
+        camp=Camp.WOLF,
         can_vote=True,
         can_be_sheriff=True,
+        can_shoot_on_death=True,
     )
 
 

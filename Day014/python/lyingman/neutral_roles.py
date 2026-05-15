@@ -8,6 +8,7 @@ def get_cupid_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.CUPID],
         description="第一晚可以指定两名玩家成为情侣。情侣一方死亡，另一方殉情。如果情侣是人和狼，则成为第三方。",
+        camp=Camp.NEUTRAL,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -18,6 +19,7 @@ def get_wild_child_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WILD_CHILD],
         description="第一晚选择一个偶像，之后跟随偶像的阵营。如果偶像死亡，野孩子变为狼人阵营。",
+        camp=Camp.NEUTRAL,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -28,6 +30,7 @@ def get_flutist_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.FLUTIST],
         description="每晚可以迷惑两名玩家。被迷惑的玩家失去投票权。全部存活玩家被迷惑时吹笛人获胜。",
+        camp=Camp.NEUTRAL,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -38,6 +41,7 @@ def get_fox_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.FOX],
         description="每晚可以查验3个相邻位置的玩家。如果其中有狼人，则失去技能；如果没有，狐狸免疫狼刀。",
+        camp=Camp.NEUTRAL,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -48,6 +52,7 @@ def get_bear_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.BEAR],
         description="如果熊的相邻位置有狼人存活，法官会在白天宣布熊咆哮了。熊死亡后不再咆哮。",
+        camp=Camp.NEUTRAL,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -58,6 +63,7 @@ def get_blood_moon_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.BLOOD_MOON],
         description="死亡时，如果场上狼人全部死亡，血月使徒复活并获胜。",
+        camp=Camp.NEUTRAL,
         can_vote=True,
         can_be_sheriff=True,
     )

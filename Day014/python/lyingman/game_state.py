@@ -2,6 +2,7 @@
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional
+from .roles import Camp
 
 
 class PlayerStatus(Enum):
@@ -42,7 +43,8 @@ class RoundPhase(Enum):
 
 class NightPhase(Enum):
     """夜间动作阶段（固定顺序）"""
-    WOLF_KILL = "wolf_kill"
+    WOLF_DISCUSS = "wolf_discuss"      # 狼人商讨（先讨论再刀人）
+    WOLF_KILL = "wolf_kill"           # 狼人刀人
     SEER_CHECK = "seer_check"
     WITCH_HEAL = "witch_heal"
     WITCH_POISON = "witch_poison"
@@ -55,8 +57,11 @@ class Role:
     """角色信息"""
     name: str
     description: str
+    camp: Camp = Camp.GOOD  # 默认好人阵营
     can_vote: bool = True
     can_be_sheriff: bool = True
+    can_shoot_on_death: bool = False  # 死亡时能否开枪（猎人）
+    shoot_target_required: bool = False  # 是否需要选择开枪目标
 
     def to_dict(self) -> dict:
         return {
@@ -163,6 +168,22 @@ class GameState:
     # 狼美人魅惑
     wolf_beauty_charm_target: Optional[int] = None
 
+    # 女巫救人
+    revives: list[int] = field(default_factory=list)  # 被女巫救活的玩家ID
+
+    # 狼人夜间商讨（共识机制）
+    wolf_discuss_proposals: dict[int, int] = field(default_factory=dict)  # player_id -> target_id
+    wolf_consensus_target: Optional[int] = None  # 共识目标
+    wolf_awaiting_confirm: list[int] = field(default_factory=list)  # 待确认的狼人ID
+
+    hunter_shoot_target: Optional[int] = None  # 猎人选择开枪带走的目标
+
+    # 中立角色技能状态
+    fox_lost_skill: bool = False  # 狐狸是否失去技能
+    fox_last_check_has_wolf: bool = False  # 狐狸上次查验是否有狼人
+    bear_roared_today: bool = False  # 今天熊是否咆哮
+    flutist_charmed_ids: list[int] = field(default_factory=list)  # 被吹笛人迷惑的玩家ID
+
     def get_alive_players(self) -> list[Player]:
         return [p for p in self.players.values() if p.is_alive()]
 
@@ -194,8 +215,8 @@ class GameState:
         p2 = self.players.get(lover_id)
         if not p1 or not p2 or not p1.role or not p2.role:
             return None
-        p1_is_wolf = p1.role.name.endswith("狼")
-        p2_is_wolf = p2.role.name.endswith("狼")
+        p1_is_wolf = self._is_wolf_role(p1.role.name)
+        p2_is_wolf = self._is_wolf_role(p2.role.name)
         if p1_is_wolf and p2_is_wolf:
             return "狼狼链"
         elif not p1_is_wolf and not p2_is_wolf:
@@ -222,16 +243,74 @@ class GameState:
 
     def is_wild_child_converted(self) -> bool:
         """野孩子是否已转换阵营"""
-        if not self.wild_child_idol or not self.wild_child_id:
+        if self.wild_child_idol is None or self.wild_child_id is None:
             return False
         idol = self.players.get(self.wild_child_idol)
         return idol is not None and not idol.is_alive()
+
+    def is_cursed(self, player_id: int) -> bool:
+        """检查玩家是否被吹笛人迷惑"""
+        return player_id in self.flutist_charmed_ids
 
     def get_wolves(self) -> list[Player]:
         return self.get_players_by_camp("wolf")
 
     def get_goods(self) -> list[Player]:
         return self.get_players_by_camp("good")
+
+    def is_couple_wolf_human(self) -> bool:
+        """检查是否有人狼链情侣"""
+        return self.love_chain_type == "人狼链"
+
+    def _is_wolf_role(self, role_name: str) -> bool:
+        """检查是否为狼人角色"""
+        if not role_name:
+            return False
+        wolf_roles = ["狼人", "狼王", "白狼王", "狼美人", "恶灵骑士"]
+        return role_name in wolf_roles
+
+    def is_love_chain_alone(self) -> bool:
+        """检查情侣（人狼链）是否存活到最后"""
+        if not self.is_couple_wolf_human():
+            return False
+
+        # 人狼链情侣存活状态检查（不要求丘比特存活）
+        if not self.lovers:
+            return False
+
+        # 获取人狼链的情侣（丘比特和其伴侣）
+        cupid_or_lover_ids = []
+        for pid in self.lovers:
+            p = self.players.get(pid)
+            if p and p.role and p.role.name == "丘比特" and p.is_alive():
+                cupid_or_lover_ids.append(pid)
+                lover_id = self.get_lover(pid)
+                if lover_id is not None:
+                    cupid_or_lover_ids.append(lover_id)
+                break
+
+        # 如果没有存活的丘比特，尝试从情侣中找人狼链
+        if not cupid_or_lover_ids:
+            for pid in self.lovers:
+                p = self.players.get(pid)
+                lover_id = self.get_lover(pid)
+                if p and lover_id is not None:
+                    lover = self.players.get(lover_id)
+                    if p.is_alive() and lover and lover.is_alive():
+                        # 检查是否是人狼链（一人是狼，一人不是狼）
+                        p_is_wolf = self._is_wolf_role(p.role.name) if p.role else False
+                        l_is_wolf = self._is_wolf_role(lover.role.name) if lover.role else False
+                        if p_is_wolf != l_is_wolf:
+                            cupid_or_lover_ids = [pid, lover_id]
+                            break
+
+        if len(cupid_or_lover_ids) < 2:
+            return False
+
+        # 检查除了这对情侣外是否还有其他存活玩家
+        alive = self.get_alive_players()
+        other_alive = [p for p in alive if p.id not in cupid_or_lover_ids]
+        return len(other_alive) == 0
 
     def to_god_view(self) -> dict:
         """上帝视角的完整信息"""

@@ -9,6 +9,7 @@ def get_prophet_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.PROPHET],
         description="每晚可以查验一名玩家的身份，查验结果是好人或狼人。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -19,6 +20,7 @@ def get_witch_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.WITCH],
         description="拥有一瓶解药和一瓶毒药。解药可以救人，毒药可以杀人。不能同晚使用。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -29,8 +31,10 @@ def get_hunter_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.HUNTER],
         description="死亡时可以开枪带走一名玩家，但如果被女巫毒死则不能开枪。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=True,
+        can_shoot_on_death=True,
     )
 
 
@@ -39,6 +43,7 @@ def get_idiot_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.IDIOT],
         description="被投票出局时可以翻牌免死，继续存活但失去投票权，仍可发言。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=False,  # 白痴不能当警长
     )
@@ -49,6 +54,7 @@ def get_guardian_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.GUARDIAN],
         description="每晚可以守护一名玩家，被守护者免疫狼刀。不能连续两晚守护同一人。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -59,6 +65,7 @@ def get_knight_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.KNIGHT],
         description="白天可以质疑一名玩家。如果目标是狼人，狼人立即死亡；如果不是，骑士自己死亡。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=True,
     )
@@ -70,6 +77,7 @@ def get_villager_role() -> Role:
     return Role(
         name=ROLE_DISPLAY_NAMES[RoleType.VILLAGER],
         description="没有任何特殊能力的普通村民。",
+        camp=Camp.GOOD,
         can_vote=True,
         can_be_sheriff=True,
     )

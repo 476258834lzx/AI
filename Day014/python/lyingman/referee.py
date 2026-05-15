@@ -36,43 +36,43 @@ DEFAULT_8P_CONFIG = {
 # 标准局配置（>=9人）
 DEFAULT_9P_CONFIG = {
     "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.VILLAGER, RoleType.VILLAGER],
-    "neutral": [],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.VILLAGER],
+    "neutral": [RoleType.CUPID],
 }
 
 DEFAULT_10P_CONFIG = {
-    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.VILLAGER, RoleType.VILLAGER],
-    "neutral": [],
+    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.IDIOT, RoleType.VILLAGER],
+    "neutral": [RoleType.CUPID],
 }
 
 DEFAULT_11P_CONFIG = {
-    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER],
-    "neutral": [],
+    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.IDIOT, RoleType.VILLAGER],
+    "neutral": [RoleType.CUPID, RoleType.WILD_CHILD],
 }
 
 DEFAULT_12P_CONFIG = {
     "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER],
-    "neutral": [],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.IDIOT, RoleType.VILLAGER],
+    "neutral": [RoleType.CUPID, RoleType.FLUTIST],
 }
 
 DEFAULT_13P_CONFIG = {
-    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER],
-    "neutral": [],
+    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER],
+    "neutral": [RoleType.FLUTIST],
 }
 
 DEFAULT_14P_CONFIG = {
-    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER],
-    "neutral": [],
+    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER],
+    "neutral": [RoleType.FLUTIST],
 }
 
 DEFAULT_15P_CONFIG = {
-    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
-    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER],
+    "wolf": [RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF, RoleType.WEREWOLF],
+    "good": [RoleType.PROPHET, RoleType.WITCH, RoleType.HUNTER, RoleType.GUARDIAN, RoleType.KNIGHT, RoleType.IDIOT, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER, RoleType.VILLAGER],
     "neutral": [],
 }
 
@@ -194,9 +194,11 @@ class Referee:
 
         role_name = player.role.name
 
-        # 野孩子转换
-        if player_id == self.game_state.wild_child_id and self.game_state.is_wild_child_converted():
-            return Camp.WOLF
+        # 野孩子阵营判断（优先于其他判断）
+        if role_name == "野孩子":
+            if self.game_state.is_wild_child_converted():
+                return Camp.WOLF
+            return Camp.NEUTRAL
 
         # 狼人阵营判断
         wolf_roles = ["狼人", "狼王", "白狼王", "狼美人", "恶灵骑士"]
@@ -259,26 +261,16 @@ class Referee:
 
         # ===== 中立角色获胜判定 =====
 
-        # 1. 情侣第三方获胜判定（人狼链）
-        if self.game_state.love_chain_type == "人狼链" and self.game_state.cupid_id is not None:
-            cupid = self.game_state.players.get(self.game_state.cupid_id)
-            if cupid and cupid.is_alive():
-                lover_id = self.game_state.get_lover(self.game_state.cupid_id)
-                if lover_id is not None:
-                    lover = self.game_state.players.get(lover_id)
-                    if lover and lover.is_alive():
-                        non_lover_alive = [
-                            p for p in alive_players
-                            if p.id != self.game_state.cupid_id and p.id != lover_id
-                        ]
-                        if len(non_lover_alive) == 0:
-                            return "neutral"
+        # 1. 情侣第三方获胜判定（人狼链）- 使用is_love_chain_alone方法
+        if self.game_state.is_love_chain_alone():
+            return "neutral"
 
         # 2. 吹笛人获胜判定
         if self.game_state.flutist_id is not None:
             flutist = self.game_state.players.get(self.game_state.flutist_id)
             if flutist and flutist.is_alive():
-                cursed_alive = [p for p in alive_players if p.is_cursed]
+                # 使用GameState的is_cursed方法检查被迷惑状态
+                cursed_alive = [p for p in alive_players if self.game_state.is_cursed(p.id)]
                 if len(cursed_alive) == total_alive:
                     return "neutral"
 

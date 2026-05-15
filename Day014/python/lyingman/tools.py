@@ -8,9 +8,173 @@ from .roles import RoleType
 # ===== 狼人阵营技能 =====
 
 @tool
+def wolf_discuss_propose(game_state: dict, player_id: int, target_id: int) -> str:
+    """
+    狼人商讨-提议刀人目标。
+
+    狼人在夜间可以互相确认身份并商讨战术。每个狼人提出自己想要刀的目标，
+    只有所有狼人都认可同一个目标时，才能成功刀人。
+
+    Args:
+        game_state: 游戏状态
+        player_id: 狼人ID
+        target_id: 提议刀的目标玩家ID
+
+    Returns:
+        提议结果
+    """
+    state = GameState(**game_state)
+    player = state.players.get(player_id)
+    target = state.players.get(target_id)
+
+    if not player or not target:
+        return "玩家不存在"
+
+    if not player.is_alive():
+        return "你已死亡"
+
+    wolf_roles = ["狼人", "狼王", "白狼王", "狼美人", "恶灵骑士"]
+    if not player.role or player.role.name not in wolf_roles:
+        return "你不是狼人，无法参与商讨"
+
+    if not target.is_alive():
+        return "目标已死亡"
+
+    if player_id == target_id:
+        return "不能提议刀自己"
+
+    state.wolf_discuss_proposals[player_id] = target_id
+    return f"你提议刀杀玩家 {target.name}（ID: {target_id}）"
+
+
+@tool
+def wolf_discuss_agree(game_state: dict, player_id: int, target_id: int) -> str:
+    """
+    狼人商讨-同意某提议。
+
+    狼人同意某个提议的目标。所有人同意后刀人目标确定。
+
+    Args:
+        game_state: 游戏状态
+        player_id: 狼人ID
+        target_id: 同意的目标玩家ID
+
+    Returns:
+        同意结果
+    """
+    state = GameState(**game_state)
+    player = state.players.get(player_id)
+
+    if not player:
+        return "玩家不存在"
+
+    if not player.is_alive():
+        return "你已死亡"
+
+    wolf_roles = ["狼人", "狼王", "白狼王", "狼美人", "恶灵骑士"]
+    if not player.role or player.role.name not in wolf_roles:
+        return "你不是狼人"
+
+    # 检查目标是否存在
+    if target_id not in state.wolf_discuss_proposals.values():
+        return "该目标没有被提议，请先提议"
+
+    # 检查是否所有人都同意了
+    wolves = [pid for pid, p in state.players.items()
+              if p.is_alive() and p.role and p.role.name in wolf_roles]
+
+    # 计算已同意该目标的人数
+    agree_count = sum(1 for pid, t in state.wolf_discuss_proposals.items()
+                      if pid in wolves and t == target_id)
+
+    # 检查当前提议
+    current_proposal = state.wolf_discuss_proposals.get(player_id)
+    if current_proposal == target_id:
+        return f"你已经提议并同意刀杀该目标了"
+
+    # 更新为同意该目标
+    state.wolf_discuss_proposals[player_id] = target_id
+
+    # 重新计算同意人数
+    agree_count = sum(1 for pid, t in state.wolf_discuss_proposals.items()
+                      if pid in wolves and t == target_id)
+
+    if agree_count == len(wolves):
+        state.wolf_consensus_target = target_id
+        target = state.players.get(target_id)
+        return f"所有狼人达成共识！今晚刀杀 {target.name}（ID: {target_id}）"
+    else:
+        remaining = len(wolves) - agree_count
+        target = state.players.get(target_id)
+        return f"你同意刀杀 {target.name}，还差{remaining}人同意"
+
+
+@tool
+def wolf_confirm_kill(game_state: dict, player_id: int) -> str:
+    """
+    狼人确认刀人（条件边触发）。
+
+    当所有狼人都认可同一个目标后，每个狼人需要调用此函数确认。
+    只有所有狼人都确认后，刀人才会执行。
+
+    Args:
+        game_state: 游戏状态
+        player_id: 狼人ID
+
+    Returns:
+        确认结果
+    """
+    state = GameState(**game_state)
+    player = state.players.get(player_id)
+
+    if not player:
+        return "玩家不存在"
+
+    if not player.is_alive():
+        return "你已死亡"
+
+    wolf_roles = ["狼人", "狼王", "白狼王", "狼美人", "恶灵骑士"]
+    if not player.role or player.role.name not in wolf_roles:
+        return "你不是狼人"
+
+    # 检查是否有共识目标
+    if state.wolf_consensus_target is None:
+        # 检查是否所有人都提议了同一目标
+        wolves = [pid for pid, p in state.players.items()
+                  if p.is_alive() and p.role and p.role.name in wolf_roles]
+
+        if len(state.wolf_discuss_proposals) < len(wolves):
+            return "还有狼人没有提议或同意，等待所有人参与商讨"
+
+        proposals = list(state.wolf_discuss_proposals.values())
+        if len(set(proposals)) == 1:
+            state.wolf_consensus_target = proposals[0]
+        else:
+            return "狼人们尚未达成共识，请继续商讨"
+
+    # 添加到确认列表
+    if player_id not in state.wolf_awaiting_confirm:
+        state.wolf_awaiting_confirm.append(player_id)
+
+    wolves = [pid for pid, p in state.players.items()
+              if p.is_alive() and p.role and p.role.name in wolf_roles]
+
+    if len(state.wolf_awaiting_confirm) == len(wolves):
+        # 所有狼人确认，执行刀人
+        state.wolf_kill_target = state.wolf_consensus_target
+        state.wolf_discuss_proposals.clear()
+        state.wolf_awaiting_confirm.clear()
+        target = state.players.get(state.wolf_consensus_target)
+        return f"所有狼人确认完毕！今晚刀杀 {target.name}（ID: {state.wolf_consensus_target}）"
+    else:
+        remaining = len(wolves) - len(state.wolf_awaiting_confirm)
+        return f"你已确认，还差{remaining}个狼人确认"
+
+
+@tool
 def wolf_kill(game_state: dict, killer_id: int, target_id: int) -> str:
     """
-    狼人刀人技能。
+    狼人刀人技能（直接刀人，无需商讨）。
 
     Args:
         game_state: 游戏状态
@@ -628,12 +792,13 @@ def bear_check(game_state: dict, bear_id: int) -> dict:
 
 def get_available_tools(role_name: str) -> list:
     """获取角色可用的技能"""
+    wolf_night_tools = [wolf_discuss_propose, wolf_discuss_agree, wolf_confirm_kill, wolf_kill, wolf_self_kill]
     tools_map = {
-        "狼人": [wolf_kill, wolf_self_kill, vote_player],
-        "狼王": [wolf_kill, hunter_shoot, vote_player],
-        "白狼王": [wolf_kill, white_wolf_self_destruct, vote_player],
-        "狼美人": [wolf_kill, vote_player],
-        "恶灵骑士": [wolf_kill, hunter_shoot, vote_player],
+        "狼人": wolf_night_tools + [vote_player],
+        "狼王": wolf_night_tools + [hunter_shoot, vote_player],
+        "白狼王": wolf_night_tools + [white_wolf_self_destruct, vote_player],
+        "狼美人": wolf_night_tools + [vote_player],
+        "恶灵骑士": wolf_night_tools + [hunter_shoot, vote_player],
         "预言家": [seer_check, vote_player],
         "女巫": [witch_heal, witch_poison, witch_skip_heal, witch_skip_poison, vote_player],
         "猎人": [hunter_shoot, hunter_skip_shoot, vote_player],

@@ -74,8 +74,13 @@ class God:
                 }
         return None
 
-    def night_settle(self):
-        """夜晚结算"""
+    def night_settle(self, hunter_callback=None):
+        """夜晚结算
+
+        Args:
+            hunter_callback: 猎人死亡时的回调函数(hunter_id, candidates) -> target_id or None
+                             用于让猎人的agent立即选择开枪目标
+        """
         deaths = []
 
         # 1. 处理狼刀
@@ -97,18 +102,49 @@ class God:
                 if player.id not in deaths:
                     deaths.append(player.id)
 
-        # 4. 执行死亡
+        # 4. 处理需要立即开枪的猎人
+        for player_id in deaths:
+            player = self.game_state.players.get(player_id)
+            if player and player.role and player.role.can_shoot_on_death:
+                # 猎人被女巫毒死不能开枪
+                if player.is_poisoned:
+                    print(f"【{player.name}】被女巫毒死，无法开枪")
+                else:
+                    # 立即调用LLM让猎人选择开枪目标
+                    print(f"【{player.name}】死亡，正在决定是否开枪...")
+                    if hunter_callback:
+                        # 获取可开枪目标（排除自己和已死亡玩家）
+                        candidates = [pid for pid, p in self.game_state.players.items()
+                                    if p.is_alive() and pid != player_id]
+                        target_id = hunter_callback(player_id, candidates)
+                        if target_id is not None:
+                            if target_id not in deaths:
+                                deaths.append(target_id)
+                                target = self.game_state.players.get(target_id)
+                                if target:
+                                    print(f"【{player.name}】开枪带走了【{target.name}】")
+                        else:
+                            print(f"【{player.name}】选择不开枪")
+
+        # 5. 执行死亡
         for player_id in deaths:
             player = self.game_state.players.get(player_id)
             if player:
                 player.status = PlayerStatus.DEAD_NIGHT
                 self.current_round.deaths.append(player_id)
 
-        # 5. 重置夜间状态
+        # 6. 处理情侣殉情
+        self._handle_couple_death(deaths)
+
+        # 7. 重置夜间状态
         self.game_state.wolf_kill_target = None
         self.game_state.seer_check_result = None
         self.game_state.witch_heal_used = False
         self.game_state.witch_poison_used = False
+        # 清理狼人商讨状态
+        self.game_state.wolf_discuss_proposals.clear()
+        self.game_state.wolf_awaiting_confirm.clear()
+        self.game_state.wolf_consensus_target = None
         for player in self.game_state.players.values():
             player.is_protected = False
             player.is_poisoned = False
@@ -175,10 +211,30 @@ class God:
 
         return order
 
+    def _handle_couple_death(self, deaths: list[int]):
+        """处理情侣殉情（只有存在情侣时才执行）"""
+        if not self.game_state.lovers:
+            return
+
+        new_deaths = []
+        for dead_id in deaths:
+            lover_id = self.game_state.get_lover(dead_id)
+            if lover_id is not None:
+                lover = self.game_state.players.get(lover_id)
+                if lover and lover.is_alive() and lover_id not in deaths and lover_id not in new_deaths:
+                    new_deaths.append(lover_id)
+                    lover.status = PlayerStatus.DEAD_NIGHT
+                    if self.current_round:
+                        self.current_round.deaths.append(lover_id)
+                    print(f"【{lover.name}】因情侣殉情死亡")
+
+        deaths.extend(new_deaths)
+
     def get_night_action_order(self) -> list[tuple[NightPhase, Optional[str]]]:
         """获取夜间动作顺序和对应角色"""
         return [
-            (NightPhase.WOLF_KILL, "狼人"),
+            (NightPhase.WOLF_DISCUSS, "狼人"),      # 狼人先商讨
+            (NightPhase.WOLF_KILL, "狼人"),          # 达成共识后刀人
             (NightPhase.SEER_CHECK, "预言家"),
             (NightPhase.WITCH_HEAL, "女巫"),
             (NightPhase.WITCH_POISON, "女巫"),
