@@ -12,7 +12,8 @@ class LLMProvider(Enum):
 
 LLM_CONFIG = {
     "provider": LLMProvider.VLLM,
-    "model": "/data/Workspace/models/Qwen/Qwen3-8B",
+    "model": "Qwen3-8B",
+    "model_path": "/data/Workspace/models/Qwen/Qwen3-8B",
     "base_url": os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1"),
     "embedding_model": "bge-m3",
     "embedding_url": os.getenv("EMBEDDING_URL", "http://localhost:11434"),

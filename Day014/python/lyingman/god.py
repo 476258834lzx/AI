@@ -1,6 +1,8 @@
 """上帝 - 负责回合管理和信息记录"""
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from .game_state import GameState, Round, RoundPhase, NightPhase, NightAction, PlayerStatus
+if TYPE_CHECKING:
+    from .player_agent import PlayerAgent
 
 
 class God:
@@ -51,8 +53,8 @@ class God:
             self.current_round.actions.append(action)
             self.game_state.night_actions.append(action)
 
-    def record_day_action(self, speaker_id: int, content: str):
-        """记录白天发言"""
+    def record_day_action(self, speaker_id: int, content: str, players: dict = None):
+        """记录白天发言并广播给所有玩家"""
         if self.current_round:
             from .game_state import DayAction
             action = DayAction(
@@ -62,6 +64,13 @@ class God:
             )
             self.current_round.actions.append(action)
             self.game_state.day_actions.append(action)
+
+        # 广播发言给所有玩家的对话历史
+        if players:
+            speech_record = {"player_id": speaker_id, "speech": content}
+            for pid, agent in players.items():
+                if pid != speaker_id:
+                    agent.conversation_history.append(speech_record)
 
     def get_night_action_result(self, phase: NightPhase) -> Optional[dict]:
         """获取某夜间阶段的动作结果"""
@@ -83,7 +92,30 @@ class God:
         """
         deaths = []
 
-        # 1. 处理狼刀
+        # ===== 1. 处理预言家查验恶灵骑士反伤 =====
+        seer_result = self.game_state.seer_check_result
+        if seer_result:
+            target_id = seer_result.get("target_id")
+            target = self.game_state.players.get(target_id) if target_id else None
+            if target and target.role and target.role.name == "恶灵骑士":
+                # 恶灵骑士被查验，次日反伤预言家
+                seer_id = seer_result.get("seer_id")
+                if seer_id:
+                    self.game_state.evil_knight_checked_by = seer_id
+                    print(f"【{target.name}】是恶灵骑士，预兆家查验后触发反伤！")
+
+        # ===== 2. 处理女巫毒杀恶灵骑士反伤 =====
+        for player in self.game_state.players.values():
+            if player.is_poisoned and player.role and player.role.name == "恶灵骑士":
+                # 恶灵骑士被毒，女巫死亡
+                witch_id = self._find_witch_id()
+                if witch_id:
+                    self.game_state.evil_knight_poisoned_by = witch_id
+                    print(f"【{player.name}】是恶灵骑士，女巫毒杀触发反伤！")
+                    if witch_id not in deaths:
+                        deaths.append(witch_id)
+
+        # ===== 3. 处理狼刀 =====
         wolf_target = self.game_state.wolf_kill_target
         if wolf_target is not None:
             target = self.game_state.players.get(wolf_target)
@@ -94,19 +126,31 @@ class God:
                 elif not target.is_protected:
                     deaths.append(wolf_target)
 
-        # 2. 处理女巫救人
+        # ===== 4. 处理女巫救人 =====
         if wolf_target in self.game_state.revives:
             if wolf_target in deaths:
                 deaths.remove(wolf_target)
 
-        # 3. 处理女巫毒人
+        # ===== 5. 处理女巫毒人 =====
         for player in self.game_state.players.values():
             if player.is_poisoned:
+                # 恶灵骑士被毒已经在上一步处理
+                if player.role and player.role.name == "恶灵骑士":
+                    continue
                 if player.id not in deaths:
                     deaths.append(player.id)
 
-        # 4. 处理需要立即开枪的猎人
-        for player_id in deaths:
+        # ===== 6. 处理恶灵骑士反伤死亡 =====
+        # 如果预言家查验了恶灵骑士，预言家次日死亡
+        if self.game_state.evil_knight_checked_by:
+            prophet_id = self.game_state.evil_knight_checked_by
+            prophet = self.game_state.players.get(prophet_id)
+            if prophet and prophet.is_alive() and prophet_id not in deaths:
+                deaths.append(prophet_id)
+                print(f"【{prophet.name}】被恶灵骑士反伤死亡！")
+
+        # ===== 7. 处理需要立即开枪的猎人 =====
+        for player_id in deaths[:]:  # 使用切片避免修改列表时出问题
             player = self.game_state.players.get(player_id)
             if player and player.role and player.role.can_shoot_on_death:
                 # 猎人被女巫毒死不能开枪
@@ -129,21 +173,22 @@ class God:
                         else:
                             print(f"【{player.name}】选择不开枪")
 
-        # 5. 执行死亡
+        # ===== 8. 执行死亡 =====
         for player_id in deaths:
             player = self.game_state.players.get(player_id)
             if player:
                 player.status = PlayerStatus.DEAD_NIGHT
                 self.current_round.deaths.append(player_id)
 
-        # 6. 处理情侣殉情
+        # ===== 9. 处理情侣殉情 =====
         self._handle_couple_death(deaths)
 
-        # 7. 重置夜间状态
+        # ===== 10. 重置夜间状态 =====
         self.game_state.wolf_kill_target = None
         self.game_state.seer_check_result = None
-        self.game_state.witch_heal_used = False
-        self.game_state.witch_poison_used = False
+        # 注意：witch_heal_used 和 witch_poison_used 是永久消耗标志，不能重置
+        self.game_state.evil_knight_checked_by = None
+        self.game_state.evil_knight_poisoned_by = None
         # 清理狼人商讨状态
         self.game_state.wolf_discuss_proposals.clear()
         self.game_state.wolf_awaiting_confirm.clear()
@@ -154,6 +199,13 @@ class God:
             player.vote_count = 0
 
         return deaths
+
+    def _find_witch_id(self) -> Optional[int]:
+        """查找女巫ID"""
+        for pid, player in self.game_state.players.items():
+            if player.is_alive() and player.role and player.role.name == "女巫":
+                return pid
+        return None
 
     def get_round_summary(self) -> str:
         """获取回合摘要"""
